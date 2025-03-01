@@ -88,38 +88,47 @@ fn init_window() -> HWND {
     }
 }
 
-/// Framebuffer in das Fenster zeichnen
-unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height: usize) {
-    let hdc: HDC = CreateCompatibleDC(null_mut());
+static mut WINDOW_HDC: Option<HDC> = None;
 
-    // Framebuffer Setup (Bitmap)
-    let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
-    bitmap_info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    bitmap_info.bmiHeader.biWidth = width as i32;
-    bitmap_info.bmiHeader.biHeight = -(height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
-    bitmap_info.bmiHeader.biPlanes = 1;
-    bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
-    bitmap_info.bmiHeader.biCompression = BI_RGB;
+unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
+    if let Some(hdc) = WINDOW_HDC {
+        return hdc;
+    }
+
+    let hdc = winapi::um::winuser::GetDC(hwnd);
+    WINDOW_HDC = Some(hdc); // Store the HDC for future use
+    hdc
+}
+
+/// Framebuffer in das Fenster zeichnen
+unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height: usize, hdc: HDC, bitmap_info: &BITMAPINFO) {
+
 
     let mut pixels: *mut u32 = null_mut();
     let hbitmap: HBITMAP = CreateDIBSection(
         hdc,
-        &bitmap_info,
+        bitmap_info,
         0,
         &mut pixels as *mut *mut u32 as *mut *mut _,
         null_mut(),
         0,
     );
+    let event_start = Instant::now();
 
-    if !pixels.is_null() {
-        // Kopiere den Framebuffer in die Bitmap-Pixel-Daten
+    unsafe {
         std::ptr::copy_nonoverlapping(framebuffer.pixels.as_ptr(), pixels, width * height);
     }
 
+    let event_time = event_start.elapsed();
+
+    println!("Zeit für oldobject: {:.2?}", event_time);
+
+
     let old_object = SelectObject(hdc, hbitmap as *mut _);
 
+
     // Zeichne die Bitmap auf das Fenster
-    let window_hdc = winapi::um::winuser::GetDC(hwnd);
+    let window_hdc = unsafe { get_window_hdc(hwnd) };
     BitBlt(
         window_hdc,
         0,
@@ -132,10 +141,10 @@ unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height
         SRCCOPY,
     );
 
+
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
     DeleteObject(hbitmap as *mut _);
-    DeleteDC(hdc);
 }
 
 /// Framebuffer manipulieren (Szene rendern)
@@ -242,6 +251,16 @@ fn main() {
         let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
 
         let mut previous_time = Instant::now(); // Zeitpunkt vor dem Start des Frames
+        let hdc: HDC = CreateCompatibleDC(null_mut());
+
+        // Framebuffer Setup (Bitmap)
+        let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
+        bitmap_info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
+        bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
+        bitmap_info.bmiHeader.biPlanes = 1;
+        bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
+        bitmap_info.bmiHeader.biCompression = BI_RGB;
 
         let mut counter: u64 = 0;
         loop {
@@ -261,33 +280,33 @@ fn main() {
             counter += 1;
             polygons[0].rotate_z(rotation_speed);
 
-            let event_start = Instant::now();
+            //let event_start = Instant::now();
 
             // Clear den Framebuffer, um die alten Frames zu überschreiben
             framebuffer.clear();
 
-            let event_time = event_start.elapsed();
-            println!("Zeit für framebuffclear: {:.2?}", event_time);
+            //let event_time = event_start.elapsed();
+            //println!("Zeit für framebuffclear: {:.2?}", event_time);
 
 
-          //let event_start = Instant::now();
+            //let event_start = Instant::now();
             // Zeichne alle Polygone
             for polygon in &polygons {
                 let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
                 framebuffer.draw_polygon(&polygon_2d, polygon.color);
             }
 
-           //let event_time = event_start.elapsed();
-           //println!("Zeit für Polygone: {:.2?}", event_time);
+             //let event_time = event_start.elapsed();
+             //println!("Zeit für Polygone: {:.2?}", event_time);
 
 
-         //   let event_start = Instant::now();
+            let event_start = Instant::now();
             // Zeichne den Frame
-            draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT);
+            draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hdc, &bitmap_info);
 
 
-          //  let event_time = event_start.elapsed();
-           // println!("Zeit für draw_frame: {:.2?}", event_time);
+            let event_time = event_start.elapsed();
+            println!("Zeit für draw_frame: {:.2?}", event_time);
 
             //let event_start = Instant::now();
             // Nachrichten abarbeiten (ohne blockieren)
@@ -486,15 +505,15 @@ impl Framebuffer {
             //let event_time = event_start.elapsed();
             //println!("Zeit für triangulate_ear_clipping(polygon): {:.2?}", event_time);
 
-            let event_start = Instant::now();
+            //let event_start = Instant::now();
 
             // Render jedes Dreieck separat
             for (v0, v1, v2) in triangles {
                 self.rasterize_triangle(v0, v1, v2, color);
             }
 
-            let event_time = event_start.elapsed();
-            println!("Zeit für alle dreiecke rasterizen: {:.2?}", event_time);
+            //let event_time = event_start.elapsed();
+            //println!("Zeit für alle dreiecke rasterizen: {:.2?}", event_time);
 
 
     }
