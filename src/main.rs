@@ -269,24 +269,45 @@ fn main() {
             counter += 1;
             polygons[0].rotate_z(rotation_speed);
 
+          //  let event_start = Instant::now();
+
             // Clear den Framebuffer, um die alten Frames zu überschreiben
             framebuffer.clear();
 
+         //   let event_time = event_start.elapsed();
+           // println!("Zeit für framebuffclear: {:.2?}", event_time);
+
+
+         //   let event_start = Instant::now();
             // Zeichne alle Polygone
             for polygon in &polygons {
                 let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
                 framebuffer.draw_polygon(&polygon_2d, polygon.color);
             }
 
+         //   let event_time = event_start.elapsed();
+         //   println!("Zeit für Polygone: {:.2?}", event_time);
+
+
+         //   let event_start = Instant::now();
             // Zeichne den Frame
             draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT);
 
+
+          //  let event_time = event_start.elapsed();
+           // println!("Zeit für draw_frame: {:.2?}", event_time);
+
+            //let event_start = Instant::now();
             // Nachrichten abarbeiten (ohne blockieren)
             let mut msg: MSG = std::mem::zeroed();
             while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) > 0 {
                 TranslateMessage(&msg); // Übersetze Tastatureingaben
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
+
+            //let event_time = event_start.elapsed();
+           // println!("Zeit für message: {:.2?}", event_time);
+
 
             // Beende die Schleife, wenn das Fenster geschlossen wird
             if !handle_window_events() {
@@ -435,9 +456,14 @@ impl Framebuffer {
         }
     }
 
-    fn clear(&mut self) {
-        self.pixels.fill(0); // Framebuffer zurücksetzen
-        self.z_buffer.fill(f32::INFINITY); // Z-Buffer zurücksetzen
+    fn clear(&mut self) {unsafe {
+        let pixels_ptr = self.pixels.as_mut_ptr();
+        std::ptr::write_bytes(pixels_ptr, 0, self.pixels.len());
+
+        let z_ptr = self.z_buffer.as_mut_ptr();
+        std::ptr::write_bytes(z_ptr as *mut u8, 0, self.z_buffer.len());
+    }
+
     }
 
         fn draw_polygon(&mut self, polygon: &Polygon2D, color: u32) {
