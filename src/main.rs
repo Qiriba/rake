@@ -1,9 +1,8 @@
 extern crate winapi;
-
 use std::cmp::{max, min, Ordering, PartialEq};
 use std::ptr::{null, null_mut};
 use std::ffi::CString;
-use std::ptr;
+use std::{ptr};
 use std::time::Instant;
 use winapi::shared::windef::{HBITMAP, HDC, HWND, RECT};
 use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
@@ -196,8 +195,6 @@ fn main() {
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
-        let mut zbuffer = vec![f32::INFINITY; WINDOW_WIDTH * WINDOW_HEIGHT]; // Z-buffer initialization
-
         // Ziel-FPS festlegen
         let target_fps: u32 = 60;
         let frame_duration = 1_000_000_000 / target_fps as u64; // Dauer eines Frames in Nanosekunden
@@ -217,11 +214,6 @@ fn main() {
             // Synchronisiere die Framerate
             //wait_for_next_frame(frame_start, frame_duration);
         //}
-        let width = 100;
-        let height = 100;
-
-
-        framebuffer.clear();
 
         let focal_length = 800.0;
         let mut polygons = vec![
@@ -269,13 +261,13 @@ fn main() {
             counter += 1;
             polygons[0].rotate_z(rotation_speed);
 
-          //  let event_start = Instant::now();
+            let event_start = Instant::now();
 
             // Clear den Framebuffer, um die alten Frames zu überschreiben
             framebuffer.clear();
 
-         //   let event_time = event_start.elapsed();
-           // println!("Zeit für framebuffclear: {:.2?}", event_time);
+            let event_time = event_start.elapsed();
+            println!("Zeit für framebuffclear: {:.2?}", event_time);
 
 
           //let event_start = Instant::now();
@@ -314,6 +306,7 @@ fn main() {
                 break;
             }
         }
+
         let span = Instant::now() - previous_time;
         print!("{}", counter / span.as_secs());
 
@@ -439,6 +432,7 @@ fn rotate_point_around_z(point: Point, angle_radians: f32) -> Point {
     }
 }
 
+#[derive(Clone)]
 struct Framebuffer {
     width: usize,
     height: usize,
@@ -456,15 +450,29 @@ impl Framebuffer {
         }
     }
 
-    fn clear(&mut self) {unsafe {
-        let pixels_ptr = self.pixels.as_mut_ptr();
-        std::ptr::write_bytes(pixels_ptr, 0, self.pixels.len());
+    fn swap(&mut self, new_framebuffer: &mut Framebuffer) {
+        // Swap the contents of the framebuffers (this way we don't move the buffer)
+        std::mem::swap(&mut self.pixels, &mut new_framebuffer.pixels);
+        std::mem::swap(&mut self.z_buffer, &mut new_framebuffer.z_buffer);
+    }
+    fn clear(&mut self) {
 
-        let z_ptr = self.z_buffer.as_mut_ptr();
-        std::ptr::write_bytes(z_ptr as *mut u8, 0, self.z_buffer.len());
+        unsafe {
+            let pixel_ptr = self.pixels.as_mut_ptr();
+            for i in 0..self.pixels.len() {
+                ptr::write(pixel_ptr.offset(i as isize), 0xFF000000);
+            }
+        }
+
+        unsafe {
+            let buffer_ptr = self.z_buffer.as_mut_ptr();
+            for i in 0..self.pixels.len() {
+                ptr::write(buffer_ptr.offset(i as isize), f32::INFINITY);
+            }
+        }
     }
 
-    }
+
 
         fn draw_polygon(&mut self, polygon: &Polygon2D, color: u32) {
             if polygon.vertices.len() < 3 {
