@@ -113,15 +113,11 @@ unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height
         null_mut(),
         0,
     );
-    let event_start = Instant::now();
 
     unsafe {
-        std::ptr::copy_nonoverlapping(framebuffer.pixels.as_ptr(), pixels, width * height);
+        std::slice::from_raw_parts_mut(pixels, width * height)
+            .copy_from_slice(&framebuffer.pixels);
     }
-
-    let event_time = event_start.elapsed();
-
-    println!("Zeit für oldobject: {:.2?}", event_time);
 
 
     let old_object = SelectObject(hdc, hbitmap as *mut _);
@@ -300,13 +296,9 @@ fn main() {
              //println!("Zeit für Polygone: {:.2?}", event_time);
 
 
-            let event_start = Instant::now();
             // Zeichne den Frame
             draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hdc, &bitmap_info);
 
-
-            let event_time = event_start.elapsed();
-            println!("Zeit für draw_frame: {:.2?}", event_time);
 
             //let event_start = Instant::now();
             // Nachrichten abarbeiten (ohne blockieren)
@@ -324,6 +316,7 @@ fn main() {
             if !handle_window_events() {
                 break;
             }
+
         }
 
         let span = Instant::now() - previous_time;
