@@ -21,6 +21,18 @@ const WINDOW_HEIGHT: usize = 600;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
 
 lazy_static! {
+    static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
+        Point::new(0.0, 0.0, -5.0),      // Startposition der Kamera
+        Point::new(0.0, 0.0, -1.0),       // Blickrichtung
+        Point::new(0.0, 1.0, 0.0),       // "Up"-Vektor
+        60.0,                            // Field of View (FOV)
+        WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
+        0.1,                             // Near-Clipping
+        100.0                            // Far-Clipping
+    ));
+}
+
+lazy_static! {
     static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
 }
 
@@ -50,73 +62,6 @@ unsafe extern "system" fn window_proc(
                 let mut keys = KEYS.lock().unwrap();
                 keys[key_code] = true; // Taste als gedrückt markieren
             }
-
-            if let Some(ref mut polygons) = POLYGONS {
-                match w_param as i32 {
-                    0x41 => { // 'A' - Nach links
-                        for polygon in polygons {
-                            let translation = (-0.1, 0.0, 0.0);
-                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-                        }
-                    }
-                    0x44 => { // 'D' - Nach rechts
-                        for polygon in polygons {
-                            let translation = (0.1, 0.0, 0.0);
-                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-                        }
-                    }
-                    0x57 => { // 'W' - Nach oben
-                        for polygon in polygons {
-                            let translation = (0.0, 0.1, 0.0);
-                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-                        }
-                    }
-                    0x53 => { // 'S' - Nach unten
-                        for polygon in polygons {
-                            let translation = (0.0, -0.1, 0.0);
-                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-                        }
-                    }
-
-                    0x51 => { // 'Q' - Drehe um +10° (X-Achse)
-                        for polygon in polygons {
-                            let rotation = (10.0_f32.to_radians(), 0.0, 0.0);
-
-                            polygon.rotate_around_center(rotation);
-                        }
-                    }
-                    0x52 => { // 'R' - Drehe um +10° (Y-Achse)
-                        for polygon in polygons {
-                            let rotation = (0.0, 10.0_f32.to_radians(), 0.0);
-                            polygon.rotate_around_center(rotation);
-                        }
-                    }
-                    0x45 => { // 'E' - Drehe um +10° (Z-Achse)
-                        for polygon in polygons {
-                            let rotation = (0.0, 0.0, 10.0_f32.to_radians());
-                            polygon.rotate_around_center(rotation);
-                        }
-                    }
-
-
-
-                    // Skalierung
-                    0x5A => { // 'Z' - Vergrößern (x1.1)
-                        for polygon in polygons {
-                            let scale = (1.1, 1.1, 1.0);
-                            polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
-                        }
-                    }
-                    0x58 => { // 'X' - Verkleinern (x0.9)
-                        for polygon in polygons {
-                            let scale = (0.9, 0.9, 1.0);
-                            polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
-                        }
-                    }
-
-                    _ => (),
-                }
-            }
             0
         }
 
@@ -136,40 +81,29 @@ unsafe extern "system" fn window_proc(
 unsafe fn handle_input() {
     let keys = KEYS.lock().unwrap();
 
+    let mut camera = CAMERA.lock().unwrap(); // Erlaubt Schreibzugriff
+
     if let Some(ref mut polygons) = POLYGONS {
 
         // Bewegung
-        if keys[0x41] { // 'A' - Nach links
-            for polygon in polygons.iter_mut() {
-                let translation = (-0.1, 0.0, 0.0);
-                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-            }
+
+        if keys['W' as usize] {
+            camera.move_forward(0.001); // W-Taste bewegt die Kamera vorwärts
         }
-        if keys[0x44] { // 'D' - Nach rechts
-            for polygon in polygons.iter_mut() {
-                let translation = (0.1, 0.0, 0.0);
-                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-            }
+        if keys['S' as usize] {
+            camera.move_backward(0.001); // S-Taste bewegt die Kamera rückwärts
         }
-        if keys[0x57] { // 'W' - Nach oben
-            for polygon in polygons.iter_mut() {
-                let translation = (0.0, 0.1, 0.0);
-                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-            }
+        if keys['D' as usize] {
+            camera.strafe_right(0.001); // D-Taste bewegt die Kamera nach rechts
         }
-        if keys[0x53] { // 'S' - Nach unten
-            for polygon in polygons.iter_mut() {
-                let translation = (0.0, -0.1, 0.0);
-                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-            }
+        if keys['A' as usize] {
+            camera.strafe_left(0.001); // A-Taste bewegt die Kamera nach links
         }
+
 
         // Rotation
         if keys[0x51] { // 'Q' - Drehe um +10° (X-Achse)
-            for polygon in polygons.iter_mut() {
-                let rotation = (10.0_f32.to_radians(), 0.0, 0.0);
-                polygon.rotate_around_center(rotation);
-            }
+            camera.look_left(0.001);
         }
         if keys[0x52] { // 'R' - Drehe um +10° (Y-Achse)
             for polygon in polygons.iter_mut() {
@@ -178,10 +112,7 @@ unsafe fn handle_input() {
             }
         }
         if keys[0x45] { // 'E' - Drehe um +10° (Z-Achse)
-            for polygon in polygons.iter_mut() {
-                let rotation = (0.0, 0.0, 10.0_f32.to_radians());
-                polygon.rotate_around_center(rotation);
-            }
+            camera.look_right(0.001);
         }
 
         // Skalierung
@@ -333,12 +264,31 @@ fn update_scene() {
     // Hier kann Logik zur Szenenaktualisierung hinzugefügt werden
 }
 
-fn render_scene(polygons: &Vec<Polygon>, focal_length: f32, framebuffer: &mut Framebuffer){
+fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
+    let camera = CAMERA.lock().unwrap(); // Kamera-Instanz
+    let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix
+    let projection_matrix = camera.projection_matrix(); // Projektion
+
+    framebuffer.clear(); // Framebuffer leeren
+
     for polygon in polygons {
-        let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
-        framebuffer.draw_polygon(&polygon_2d, polygon.color);
+        println!("Polygon: {:?}", polygon);
+
+        // Projiziere jedes Polygon
+        let projected_polygon = project_polygon(
+            polygon,
+            &view_matrix,
+            &projection_matrix,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        );
+
+        framebuffer.draw_polygon(&projected_polygon, polygon.color); // Zeichne Polygon
     }
+
 }
+
+
 /// Dummy-Funktion: Aktuelle Zeit in Nanosekunden zurückgeben
 fn current_time_ns() -> u64 {
     0
@@ -353,6 +303,7 @@ fn cleanup() {
 }
 
 fn main() {
+
     unsafe{
 
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
@@ -366,29 +317,6 @@ fn main() {
             polygon.add_point(Point::new(0.0, 1.0, 5.0));
             polygon
         }]);
-
-        let mut polygons = vec![
-            Polygon { vertices: vec![
-                Point::new(-1.0, -1.0, 8.0), // Links unten (näher)
-                Point::new(1.0, -1.0, 8.0), // Rechts unten (leicht entfernt)
-                Point::new(1.0, 1.0, 8.0), // Rechts oben (weiter entfernt)
-                Point::new(-1.0, 1.0, 8.0), // Links oben (leicht entfernt)
-
-
-            ],
-                color: 0xFFFFFF00
-            }
-            /*
-            ,
-            Polygon { vertices: vec![
-                Point::new(-2.0, -2.0, 6.0),
-                Point::new(0.0, -2.0, 6.0),
-                Point::new(-1.0, 0.0, 6.0),
-
-            ],
-                color: 0xFFFFFFFF
-            },*/
-        ];
 
 
         let hwnd = init_window();
@@ -454,7 +382,7 @@ fn main() {
             // Zeichne alle Polygone in den framebuffer
             unsafe {
                 if let Some(ref polygons) = POLYGONS {
-                    render_scene(polygons, 800.0, &mut framebuffer);
+                    render_scene(polygons, &mut framebuffer);
                 }
             };
 
@@ -479,7 +407,66 @@ impl Point {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Point { x, y , z}
     }
+    pub fn dot(self, other: Point) -> f32 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
+    pub fn normalize(self) -> Point {
+        let magnitude = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
+        Point {
+            x: self.x / magnitude,
+            y: self.y / magnitude,
+            z: self.z / magnitude,
+        }
+    }
+
+    pub fn cross(self, other: Point) -> Point {
+        Point {
+            x: self.y * other.z - self.z * other.y,
+            y: self.z * other.x - self.x * other.z,
+            z: self.x * other.y - self.y * other.x,
+        }
+    }
 }
+
+// Addition und Subtraktion für die Vektoroperationen
+use std::ops::{Add, Mul, Sub};
+
+impl Add for Point {
+    type Output = Point;
+    fn add(self, other: Point) -> Point {
+        Point {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+}
+
+impl Sub for Point {
+    type Output = Point;
+    fn sub(self, other: Point) -> Point {
+        Point {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
+}
+
+impl Mul<f32> for Point {
+    type Output = Point;
+
+    fn mul(self, scalar: f32) -> Point {
+        Point {
+            x: self.x * scalar,
+            y: self.y * scalar,
+            z: self.z * scalar,
+        }
+    }
+}
+
+
 fn project_point_3d_to_2d(point: Point, focal_length: f32) -> (f32, f32) {
     // Perspective projection formula
     let x_proj = point.x * focal_length / point.z;
@@ -595,31 +582,46 @@ impl Polygon {
 
 fn project_polygon(
     polygon: &Polygon,
-    focal_length: f32,
+    view_matrix: &Matrix4x4,
+    projection_matrix: &Matrix4x4,
     screen_width: usize,
     screen_height: usize,
 ) -> Polygon2D {
     let mut vertices_2d: Vec<Point2D> = Vec::new();
-
+    println!("view_matrix {:?}", view_matrix);
     for vertex in &polygon.vertices {
-        if vertex.z > 0.0 {
-            // Project point to 2D space
-            let (x_proj, y_proj) = project_point_3d_to_2d(*vertex, focal_length);
 
-            // Convert to screen space
-            let screen_x = ((screen_width as f32 / 2.0) + x_proj).round();
-            let screen_y = ((screen_height as f32 / 2.0) - y_proj).round();
+        // 1. Transformiere den Vertex in den View-Space
+        let view_transformed = view_matrix.multiply_point(vertex);
+        println!("View Transformed Vertex: {:?}", view_transformed);
 
 
+        // 2. Überprüfen, ob der Punkt vor der Kamera liegt (z > 0)
+        if view_transformed.z > 0.0 {
+            // 3. Projiziere den Punkt in den Clip-Space
+            let projected = projection_matrix.multiply_point(&view_transformed);
+
+            // 4. Perspektivische Division (Normalisierung)
+            let x_ndc = projected.x / projected.z; // Normalized Device Coordinates (NDC)
+            let y_ndc = projected.y / projected.z;
+
+            // 5. Konvertiere den Punkt in Bildschirmkoordinaten (Screen-Space)
+            let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
+            let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
+
+            // Füge den Punkt zur Liste hinzu
             vertices_2d.push(Point2D {
                 x: screen_x,
                 y: screen_y,
-                z: vertex.z
+                z: projected.z, // Tiefeninformation beibehalten
             });
         }
     }
+
+    // Rückgabe des projizierten 2D-Polygons
     Polygon2D { vertices: vertices_2d }
 }
+
 
 #[derive(Copy, Clone, Debug)]
 struct Point2D {
@@ -910,18 +912,71 @@ impl Matrix4x4 {
             ],
         }
     }
+    pub fn rotation_around_axis(axis: Point, angle_radians: f32) -> Matrix4x4 {
+        let normalized_axis = axis.normalize(); // Achse normalisieren
+        let x = normalized_axis.x;
+        let y = normalized_axis.y;
+        let z = normalized_axis.z;
+
+        let cos_theta = angle_radians.cos();
+        let sin_theta = angle_radians.sin();
+        let one_minus_cos = 1.0 - cos_theta;
+
+        Matrix4x4 {
+            data: [
+                [
+                    cos_theta + x * x * one_minus_cos,
+                    x * y * one_minus_cos - z * sin_theta,
+                    x * z * one_minus_cos + y * sin_theta,
+                    0.0,
+                ],
+                [
+                    y * x * one_minus_cos + z * sin_theta,
+                    cos_theta + y * y * one_minus_cos,
+                    y * z * one_minus_cos - x * sin_theta,
+                    0.0,
+                ],
+                [
+                    z * x * one_minus_cos - y * sin_theta,
+                    z * y * one_minus_cos + x * sin_theta,
+                    cos_theta + z * z * one_minus_cos,
+                    0.0,
+                ],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+        }
+    }
 
     pub fn multiply_point(&self, point: &Point) -> Point {
-        let x = self.data[0][0] * point.x + self.data[0][1] * point.y
-            + self.data[0][2] * point.z + self.data[0][3] * 1.0;
+        let x = self.data[0][0] * point.x
+            + self.data[1][0] * point.y
+            + self.data[2][0] * point.z
+            + self.data[3][0];
+        let y = self.data[0][1] * point.x
+            + self.data[1][1] * point.y
+            + self.data[2][1] * point.z
+            + self.data[3][1];
+        let z = self.data[0][2] * point.x
+            + self.data[1][2] * point.y
+            + self.data[2][2] * point.z
+            + self.data[3][2];
+        let w = self.data[0][3] * point.x
+            + self.data[1][3] * point.y
+            + self.data[2][3] * point.z
+            + self.data[3][3];
 
-        let y = self.data[1][0] * point.x + self.data[1][1] * point.y
-            + self.data[1][2] * point.z + self.data[1][3] * 1.0;
 
-        let z = self.data[2][0] * point.x + self.data[2][1] * point.y
-            + self.data[2][2] * point.z + self.data[2][3] * 1.0;
+        // Perspektivische Division, wenn w != 1.0
+        if w != 0.0 {
+            Point {
+                x: x / w,
+                y: y / w,
+                z: z / w,
+            }
+        } else {
+            Point { x, y, z }
+        }
 
-        Point::new(x, y, z)
     }
 
     pub fn multiply(&self, other: &Matrix4x4) -> Matrix4x4 {
@@ -982,4 +1037,116 @@ impl Matrix4x4 {
         matrix
     }
 
+}
+#[derive(Debug)]
+pub struct Camera {
+    pub position: Point,         // Position der Kamera
+    pub forward: Point,          // Richtung, in die die Kamera schaut
+    pub up: Point,               // "Up"-Vektor der Kamera
+    pub fov: f32,                // Field of View (FOV), in Grad
+    pub aspect_ratio: f32,       // Breite / Höhe des Fensters
+    pub near: f32,               // Near-Clipping-Plane
+    pub far: f32,                // Far-Clipping-Plane
+}
+
+impl Camera {
+    pub fn new(position: Point, forward: Point, up: Point, fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Self {
+        Self {
+            position,
+            forward,
+            up,
+            fov,
+            aspect_ratio,
+            near,
+            far,
+        }
+    }
+
+    // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
+    pub fn view_matrix(&self) -> Matrix4x4 {
+        let forward = normalize(self.forward);
+        let right = normalize(cross_product(forward, self.up));
+        let up = cross_product(right, forward);
+
+        let tx = -dot_product(right, self.position);
+        let ty = -dot_product(up, self.position);
+        let tz = dot_product(forward, self.position);
+
+        Matrix4x4 {
+            data: [
+                [right.x, up.x, -forward.x, 0.0],
+                [right.y, up.y, -forward.y, 0.0],
+                [right.z, up.z, -forward.z, 0.0],
+                [tx, ty, tz, 1.0],
+            ],
+        }
+    }
+
+    // Funktion zur Erstellung einer Projektion-Matrix (zur 2D-Projektion)
+    pub fn projection_matrix(&self) -> Matrix4x4 {
+        let fov_rad = (self.fov.to_radians() / 2.0).tan();
+        Matrix4x4 {
+            data: [
+                [1.0 / (self.aspect_ratio * fov_rad), 0.0, 0.0, 0.0],
+                [0.0, 1.0 / fov_rad, 0.0, 0.0],
+                [0.0, 0.0, self.far / (self.far - self.near), 1.0],
+                [0.0, 0.0, (-self.far * self.near) / (self.far - self.near), 0.0],
+            ],
+        }
+    }
+    pub fn move_forward(&mut self, distance: f32) {
+        self.position = self.position - self.forward.normalize() * distance;
+    }
+
+    pub fn move_backward(&mut self, distance: f32) {
+        self.position = self.position + self.forward.normalize() * distance;
+    }
+
+    pub fn strafe_right(&mut self, distance: f32) {
+        let right = self.forward.cross(self.up).normalize();
+        self.position = self.position + right * distance;
+    }
+
+    pub fn strafe_left(&mut self, distance: f32) {
+        let right = self.forward.cross(self.up).normalize();
+        self.position = self.position - right * distance;
+    }
+
+    pub fn move_up(&mut self, distance: f32) {
+        self.position = self.position - self.up.normalize() * distance;
+    }
+
+    pub fn move_down(&mut self, distance: f32) {
+        self.position = self.position + self.up.normalize() * distance;
+    }
+
+    pub fn look_right(&mut self, angle_radians: f32) {
+        // Rotiert die Kamera um die "Up"-Achse nach rechts.
+        let rotation_matrix = Matrix4x4::rotation_around_axis(self.up, -angle_radians);
+        self.forward = rotation_matrix.multiply_point(&self.forward).normalize();
+    }
+
+    pub fn look_left(&mut self, angle_radians: f32) {
+        // Rotiert die Kamera um die "Up"-Achse nach links.
+        self.look_right(-angle_radians); // Nach links ist die negative Richtung zu "look_right".
+    }
+
+}
+fn normalize(vec: Point) -> Point {
+    let magnitude = (vec.x * vec.x + vec.y * vec.y + vec.z * vec.z).sqrt();
+    Point {
+        x: vec.x / magnitude,
+        y: vec.y / magnitude,
+        z: vec.z / magnitude,
+    }
+}
+fn cross_product(a: Point, b: Point) -> Point {
+    Point {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+    }
+}
+fn dot_product(a: Point, b: Point) -> f32 {
+    a.x * b.x + a.y * b.y + a.z * b.z
 }
