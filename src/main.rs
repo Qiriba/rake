@@ -3,6 +3,7 @@ use std::cmp::{PartialEq};
 use std::ptr::{null_mut};
 use std::ffi::CString;
 use std::{ptr};
+use std::sync::Mutex;
 use std::time::Instant;
 use winapi::shared::windef::{HBITMAP, HDC, HWND, };
 use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
@@ -10,13 +11,18 @@ use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
+use lazy_static::lazy_static;
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
+
+lazy_static! {
+    static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
+}
 
 /// Windows-Prozedur - Hier wird das Rendering gesteuert
 unsafe extern "system" fn window_proc(
@@ -30,30 +36,86 @@ unsafe extern "system" fn window_proc(
             0
         }
         WM_KEYDOWN => {
+            let key_code = w_param as usize;
+            if key_code < 256 {
+                let mut keys = KEYS.lock().unwrap();
+                keys[key_code] = true; // Taste als gedrückt markieren
+            }
+
             if let Some(ref mut polygons) = POLYGONS {
                 match w_param as i32 {
                     0x41 => { // 'A' - Nach links
                         for polygon in polygons {
-                            polygon.translate(-1.0, 0.0, 0.0);
+                            let translation = (-0.1, 0.0, 0.0);
+                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
                         }
                     }
                     0x44 => { // 'D' - Nach rechts
                         for polygon in polygons {
-                            polygon.translate(1.0, 0.0, 0.0);
+                            let translation = (0.1, 0.0, 0.0);
+                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
                         }
                     }
                     0x57 => { // 'W' - Nach oben
                         for polygon in polygons {
-                            polygon.translate(0.0, -1.0, 0.0);
+                            let translation = (0.0, 0.1, 0.0);
+                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
                         }
                     }
                     0x53 => { // 'S' - Nach unten
                         for polygon in polygons {
-                            polygon.translate(0.0, 1.0, 0.0);
+                            let translation = (0.0, -0.1, 0.0);
+                            polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
                         }
                     }
+
+                    0x51 => { // 'Q' - Drehe um +10° (X-Achse)
+                        for polygon in polygons {
+                            let rotation = (10.0_f32.to_radians(), 0.0, 0.0);
+
+                            polygon.rotate_around_center(rotation);
+                        }
+                    }
+                    0x52 => { // 'R' - Drehe um +10° (Y-Achse)
+                        for polygon in polygons {
+                            let rotation = (0.0, 10.0_f32.to_radians(), 0.0);
+                            polygon.rotate_around_center(rotation);
+                        }
+                    }
+                    0x45 => { // 'E' - Drehe um +10° (Z-Achse)
+                        for polygon in polygons {
+                            let rotation = (0.0, 0.0, 10.0_f32.to_radians());
+                            polygon.rotate_around_center(rotation);
+                        }
+                    }
+
+
+
+                    // Skalierung
+                    0x5A => { // 'Z' - Vergrößern (x1.1)
+                        for polygon in polygons {
+                            let scale = (1.1, 1.1, 1.0);
+                            polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
+                        }
+                    }
+                    0x58 => { // 'X' - Verkleinern (x0.9)
+                        for polygon in polygons {
+                            let scale = (0.9, 0.9, 1.0);
+                            polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
+                        }
+                    }
+
                     _ => (),
                 }
+            }
+            0
+        }
+
+        WM_KEYUP => {
+            let key_code = w_param as usize;
+            if key_code < 256 {
+                let mut keys = KEYS.lock().unwrap();
+                keys[key_code] = false; // Taste als losgelassen markieren
             }
             0
         }
@@ -62,7 +124,72 @@ unsafe extern "system" fn window_proc(
     };
     0
 }
+unsafe fn handle_input() {
+    let keys = KEYS.lock().unwrap();
 
+    if let Some(ref mut polygons) = POLYGONS {
+
+        // Bewegung
+        if keys[0x41] { // 'A' - Nach links
+            for polygon in polygons.iter_mut() {
+                let translation = (-0.1, 0.0, 0.0);
+                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+            }
+        }
+        if keys[0x44] { // 'D' - Nach rechts
+            for polygon in polygons.iter_mut() {
+                let translation = (0.1, 0.0, 0.0);
+                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+            }
+        }
+        if keys[0x57] { // 'W' - Nach oben
+            for polygon in polygons.iter_mut() {
+                let translation = (0.0, 0.1, 0.0);
+                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+            }
+        }
+        if keys[0x53] { // 'S' - Nach unten
+            for polygon in polygons.iter_mut() {
+                let translation = (0.0, -0.1, 0.0);
+                polygon.transform_full(translation, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+            }
+        }
+
+        // Rotation
+        if keys[0x51] { // 'Q' - Drehe um +10° (X-Achse)
+            for polygon in polygons.iter_mut() {
+                let rotation = (10.0_f32.to_radians(), 0.0, 0.0);
+                polygon.rotate_around_center(rotation);
+            }
+        }
+        if keys[0x52] { // 'R' - Drehe um +10° (Y-Achse)
+            for polygon in polygons.iter_mut() {
+                let rotation = (0.0, 10.0_f32.to_radians(), 0.0);
+                polygon.rotate_around_center(rotation);
+            }
+        }
+        if keys[0x45] { // 'E' - Drehe um +10° (Z-Achse)
+            for polygon in polygons.iter_mut() {
+                let rotation = (0.0, 0.0, 10.0_f32.to_radians());
+                polygon.rotate_around_center(rotation);
+            }
+        }
+
+        // Skalierung
+        if keys[0x5A] { // 'Z' - Vergrößern (x1.1)
+            for polygon in polygons.iter_mut() {
+                let scale = (1.1, 1.1, 1.0);
+                polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
+            }
+        }
+        if keys[0x58] { // 'X' - Verkleinern (x0.9)
+            for polygon in polygons.iter_mut() {
+                let scale = (0.9, 0.9, 1.0);
+                polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
+            }
+        }
+    }
+}
 /// Initialisierung eines Fensters
 fn init_window() -> HWND {
     unsafe {
@@ -293,6 +420,7 @@ fn main() {
                 TranslateMessage(&msg); // Übersetze Tastatureingaben
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
+            handle_input();
             /*
             let current_time = Instant::now();
             let frame_time = current_time - previous_time; // Dauer des Frames
@@ -386,11 +514,71 @@ impl Polygon {
         }
     }
 
+    pub fn transform(&mut self, matrix: Matrix4x4) {
+        for vertex in &mut self.vertices {
+            *vertex = matrix.multiply_point(vertex);
+        }
+    }
+
     pub fn rotate_z(&mut self, angle_radians: f32) {
         // Wende die Rotation auf jeden Punkt an
         for vertex in self.vertices.iter_mut() {
             *vertex = rotate_point_around_z(*vertex, angle_radians);
         }
+    }
+
+    pub fn transform_full(
+        &mut self,
+        translation: (f32, f32, f32), // Verschiebung in (x, y, z)
+        rotation: (f32, f32, f32),   // Rotation in (x, y, z) [in Radiant]
+        scale: (f32, f32, f32),      // Skalierung in (x, y, z)
+    ) {
+        // Erzeuge die Transformationsmatrizen
+        let translation_matrix = Matrix4x4::translate(translation.0, translation.1, translation.2);
+        let rotation_x_matrix = Matrix4x4::rotate_x(rotation.0);
+        let rotation_y_matrix = Matrix4x4::rotate_y(rotation.1);
+        let rotation_z_matrix = Matrix4x4::rotate_z(rotation.2);
+        let scaling_matrix = Matrix4x4::scale(scale.0, scale.1, scale.2);
+
+        // Kombiniere alle Matrizen: Skalieren → Rotieren (X → Y → Z) → Verschieben
+        let combined_matrix = translation_matrix
+            .multiply(&rotation_z_matrix)
+            .multiply(&rotation_y_matrix)
+            .multiply(&rotation_x_matrix)
+            .multiply(&scaling_matrix);
+
+        // Wende die kombinierte Matrix auf jedes Vertex an
+        for vertex in &mut self.vertices {
+            *vertex = combined_matrix.multiply_point(vertex);
+        }
+    }
+    pub fn rotate_around_center(&mut self, rotation: (f32, f32, f32)) {
+        // 1. Berechne den Mittelpunkt des Polygons
+        let mut center_x = 0.0;
+        let mut center_y = 0.0;
+        let mut center_z = 0.0;
+        let vertex_count = self.vertices.len() as f32;
+
+        for vertex in &self.vertices {
+            center_x += vertex.x;
+            center_y += vertex.y;
+            center_z += vertex.z;
+        }
+
+        center_x /= vertex_count;
+        center_y /= vertex_count;
+        center_z /= vertex_count;
+
+        // 2. Verschiebe das Polygon relativ zum Ursprung
+        let translation_to_origin = (-center_x, -center_y, -center_z);
+        self.transform_full(translation_to_origin, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
+
+        // 3. Führe die Rotation um den Ursprung durch
+        self.transform_full((0.0, 0.0, 0.0), rotation, (1.0, 1.0, 1.0));
+
+        // 4. Verschiebe das Polygon zurück an seinen ursprünglichen Ort
+        let translation_back = (center_x, center_y, center_z);
+        self.transform_full(translation_back, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
     }
 
 
@@ -695,4 +883,94 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
     let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Matrix4x4 {
+    pub data: [[f32; 4]; 4],
+}
+
+impl Matrix4x4 {
+    pub fn identity() -> Self {
+        Self {
+            data: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+        }
+    }
+
+    pub fn multiply_point(&self, point: &Point) -> Point {
+        let x = self.data[0][0] * point.x + self.data[0][1] * point.y
+            + self.data[0][2] * point.z + self.data[0][3] * 1.0;
+
+        let y = self.data[1][0] * point.x + self.data[1][1] * point.y
+            + self.data[1][2] * point.z + self.data[1][3] * 1.0;
+
+        let z = self.data[2][0] * point.x + self.data[2][1] * point.y
+            + self.data[2][2] * point.z + self.data[2][3] * 1.0;
+
+        Point::new(x, y, z)
+    }
+
+    pub fn multiply(&self, other: &Matrix4x4) -> Matrix4x4 {
+        let mut result = Matrix4x4::identity();
+        for i in 0..4 {
+            for j in 0..4 {
+                result.data[i][j] = (0..4).map(|k| self.data[i][k] * other.data[k][j]).sum();
+            }
+        }
+        result
+    }
+    pub fn translate(tx: f32, ty: f32, tz: f32) -> Self {
+        let mut matrix = Matrix4x4::identity();
+        matrix.data[0][3] = tx;
+        matrix.data[1][3] = ty;
+        matrix.data[2][3] = tz;
+        matrix
+    }
+
+    pub fn scale(sx: f32, sy: f32, sz: f32) -> Self {
+        let mut matrix = Matrix4x4::identity();
+        matrix.data[0][0] = sx;
+        matrix.data[1][1] = sy;
+        matrix.data[2][2] = sz;
+        matrix
+    }
+
+    pub fn rotate_z(angle: f32) -> Self {
+        let mut matrix = Matrix4x4::identity();
+        let cos_theta = angle.cos();
+        let sin_theta = angle.sin();
+        matrix.data[0][0] = cos_theta;
+        matrix.data[0][1] = -sin_theta;
+        matrix.data[1][0] = sin_theta;
+        matrix.data[1][1] = cos_theta;
+        matrix
+    }
+
+    pub fn rotate_x(angle: f32) -> Self {
+        let mut matrix = Matrix4x4::identity();
+        let cos_theta = angle.cos();
+        let sin_theta = angle.sin();
+        matrix.data[1][1] = cos_theta;
+        matrix.data[1][2] = -sin_theta;
+        matrix.data[2][1] = sin_theta;
+        matrix.data[2][2] = cos_theta;
+        matrix
+    }
+
+    pub fn rotate_y(angle: f32) -> Self {
+        let mut matrix = Matrix4x4::identity();
+        let cos_theta = angle.cos();
+        let sin_theta = angle.sin();
+        matrix.data[0][0] = cos_theta;
+        matrix.data[0][2] = sin_theta;
+        matrix.data[2][0] = -sin_theta;
+        matrix.data[2][2] = cos_theta;
+        matrix
+    }
+
 }
