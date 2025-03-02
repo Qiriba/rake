@@ -101,30 +101,23 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
 }
 
 /// Framebuffer in das Fenster zeichnen
-unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height: usize, hdc: HDC, bitmap_info: &BITMAPINFO) {
+unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
 
-
-    let mut pixels: *mut u32 = null_mut();
-    let hbitmap: HBITMAP = CreateDIBSection(
-        hdc,
-        bitmap_info,
-        0,
-        &mut pixels as *mut *mut u32 as *mut *mut _,
-        null_mut(),
-        0,
-    );
+    let event_start = Instant::now();
 
     unsafe {
         std::slice::from_raw_parts_mut(pixels, width * height)
             .copy_from_slice(&framebuffer.pixels);
     }
 
+    let event_time = event_start.elapsed();
+    println!("Zeit für copy from slice: {:.2?}", event_time);
 
     let old_object = SelectObject(hdc, hbitmap as *mut _);
 
+    let event_start = Instant::now();
 
     // Zeichne die Bitmap auf das Fenster
-    let window_hdc = unsafe { get_window_hdc(hwnd) };
     BitBlt(
         window_hdc,
         0,
@@ -137,10 +130,18 @@ unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height
         SRCCOPY,
     );
 
+    let event_time = event_start.elapsed();
+    println!("Zeit für BitBlt und window_hdc: {:.2?}", event_time);
+
+    let event_start = Instant::now();
+
 
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
-    DeleteObject(hbitmap as *mut _);
+
+    //DeleteObject(hbitmap as *mut _);
+    let event_time = event_start.elapsed();
+    println!("Zeit für Resourcenfreigabe: {:.2?}", event_time);
 }
 
 /// Framebuffer manipulieren (Szene rendern)
@@ -247,7 +248,6 @@ fn main() {
         let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
 
         let mut previous_time = Instant::now(); // Zeitpunkt vor dem Start des Frames
-        let hdc: HDC = CreateCompatibleDC(null_mut());
 
         // Framebuffer Setup (Bitmap)
         let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
@@ -258,6 +258,20 @@ fn main() {
         bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
         bitmap_info.bmiHeader.biCompression = BI_RGB;
 
+
+
+        let window_hdc = unsafe { get_window_hdc(hwnd) };
+        let hdc: HDC = CreateCompatibleDC(window_hdc);
+
+        let mut pixels: *mut u32 = null_mut();
+        let hbitmap: HBITMAP = CreateDIBSection(
+            hdc,
+            &bitmap_info,
+            0,
+            &mut pixels as *mut *mut u32 as *mut *mut _,
+            null_mut(),
+            0,
+        );
         let mut counter: u64 = 0;
         loop {
             /*
@@ -297,7 +311,7 @@ fn main() {
 
 
             // Zeichne den Frame
-            draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hdc, &bitmap_info);
+            draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
 
 
             //let event_start = Instant::now();
