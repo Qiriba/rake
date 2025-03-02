@@ -11,7 +11,7 @@ use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -33,8 +33,17 @@ unsafe extern "system" fn window_proc(
 ) -> LRESULT {
     return match msg {
         WM_QUIT => {
+            PostQuitMessage(0);
             0
         }
+
+        // Wenn das Fenster zerstört wurde
+        WM_DESTROY => {
+            // Beende die Anwendung
+            PostQuitMessage(0);
+            return 0;
+        }
+
         WM_KEYDOWN => {
             let key_code = w_param as usize;
             if key_code < 256 {
