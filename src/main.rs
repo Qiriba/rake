@@ -19,6 +19,7 @@ use lazy_static::lazy_static;
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
+static mut CAMERA: Option<Camera> = None;
 
 lazy_static! {
     static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
@@ -333,12 +334,28 @@ fn update_scene() {
     // Hier kann Logik zur Szenenaktualisierung hinzugefügt werden
 }
 
-fn render_scene(polygons: &Vec<Polygon>, focal_length: f32, framebuffer: &mut Framebuffer){
+fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
+    let camera = unsafe { CAMERA.as_ref().unwrap() };
+
+    // Erstelle die View- und Projection-Matrix
+    let view_matrix = camera.view_matrix();
+    let projection_matrix = camera.projection_matrix();
+
+    framebuffer.clear();
+
     for polygon in polygons {
-        let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
-        framebuffer.draw_polygon(&polygon_2d, polygon.color);
+        let projected_polygon = project_polygon(
+            polygon,
+            &view_matrix,
+            &projection_matrix,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+        );
+
+        framebuffer.draw_polygon(&projected_polygon, polygon.color);
     }
 }
+
 /// Dummy-Funktion: Aktuelle Zeit in Nanosekunden zurückgeben
 fn current_time_ns() -> u64 {
     0
@@ -353,6 +370,18 @@ fn cleanup() {
 }
 
 fn main() {
+    unsafe {
+        CAMERA = Some(Camera::new(
+            Point::new(0.0, 0.0, -5.0),      // Position der Kamera
+            Point::new(0.0, 0.0, 1.0),       // Sicht nach vorne
+            Point::new(0.0, 1.0, 0.0),       // "Up"-Richtung
+            60.0,                            // Field of View (FOV)
+            WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Aspect Ratio
+            0.1,                             // Near-Clipping
+            100.0                            // Far-Clipping
+        ));
+    }
+
     unsafe{
 
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
@@ -595,31 +624,43 @@ impl Polygon {
 
 fn project_polygon(
     polygon: &Polygon,
-    focal_length: f32,
+    view_matrix: &Matrix4x4,
+    projection_matrix: &Matrix4x4,
     screen_width: usize,
     screen_height: usize,
 ) -> Polygon2D {
     let mut vertices_2d: Vec<Point2D> = Vec::new();
 
     for vertex in &polygon.vertices {
-        if vertex.z > 0.0 {
-            // Project point to 2D space
-            let (x_proj, y_proj) = project_point_3d_to_2d(*vertex, focal_length);
+        // 1. Transformiere den Vertex in den View-Space
+        let view_transformed = view_matrix.multiply_point(&vertex);
 
-            // Convert to screen space
-            let screen_x = ((screen_width as f32 / 2.0) + x_proj).round();
-            let screen_y = ((screen_height as f32 / 2.0) - y_proj).round();
+        // 2. Überprüfen, ob der Punkt vor der Kamera liegt (z > 0)
+        if view_transformed.z > 0.0 {
+            // 3. Projiziere den Punkt in den Clip-Space
+            let projected = projection_matrix.multiply_point(&view_transformed);
 
+            // 4. Perspektivische Division (Normalisierung)
+            let x_ndc = projected.x / projected.z; // Normalized Device Coordinates (NDC)
+            let y_ndc = projected.y / projected.z;
 
+            // 5. Konvertiere den Punkt in Bildschirmkoordinaten (Screen-Space)
+            let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
+            let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
+
+            // Füge den Punkt zur Liste hinzu
             vertices_2d.push(Point2D {
                 x: screen_x,
                 y: screen_y,
-                z: vertex.z
+                z: projected.z, // Tiefeninformation beibehalten
             });
         }
     }
+
+    // Rückgabe des projizierten 2D-Polygons
     Polygon2D { vertices: vertices_2d }
 }
+
 
 #[derive(Copy, Clone, Debug)]
 struct Point2D {
@@ -982,4 +1023,79 @@ impl Matrix4x4 {
         matrix
     }
 
+}
+#[derive(Debug)]
+pub struct Camera {
+    pub position: Point,         // Position der Kamera
+    pub forward: Point,          // Richtung, in die die Kamera schaut
+    pub up: Point,               // "Up"-Vektor der Kamera
+    pub fov: f32,                // Field of View (FOV), in Grad
+    pub aspect_ratio: f32,       // Breite / Höhe des Fensters
+    pub near: f32,               // Near-Clipping-Plane
+    pub far: f32,                // Far-Clipping-Plane
+}
+
+impl Camera {
+    pub fn new(position: Point, forward: Point, up: Point, fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Self {
+        Self {
+            position,
+            forward,
+            up,
+            fov,
+            aspect_ratio,
+            near,
+            far,
+        }
+    }
+
+    // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
+    pub fn view_matrix(&self) -> Matrix4x4 {
+        let forward = normalize(self.forward);
+        let right = normalize(cross_product(forward, self.up));
+        let up = cross_product(right, forward);
+
+        let tx = -dot_product(right, self.position);
+        let ty = -dot_product(up, self.position);
+        let tz = dot_product(forward, self.position);
+
+        Matrix4x4 {
+            data: [
+                [right.x, up.x, -forward.x, 0.0],
+                [right.y, up.y, -forward.y, 0.0],
+                [right.z, up.z, -forward.z, 0.0],
+                [tx, ty, tz, 1.0],
+            ],
+        }
+    }
+
+    // Funktion zur Erstellung einer Projektion-Matrix (zur 2D-Projektion)
+    pub fn projection_matrix(&self) -> Matrix4x4 {
+        let fov_rad = (self.fov.to_radians() / 2.0).tan();
+        Matrix4x4 {
+            data: [
+                [1.0 / (self.aspect_ratio * fov_rad), 0.0, 0.0, 0.0],
+                [0.0, 1.0 / fov_rad, 0.0, 0.0],
+                [0.0, 0.0, self.far / (self.far - self.near), 1.0],
+                [0.0, 0.0, (-self.far * self.near) / (self.far - self.near), 0.0],
+            ],
+        }
+    }
+}
+fn normalize(vec: Point) -> Point {
+    let magnitude = (vec.x * vec.x + vec.y * vec.y + vec.z * vec.z).sqrt();
+    Point {
+        x: vec.x / magnitude,
+        y: vec.y / magnitude,
+        z: vec.z / magnitude,
+    }
+}
+fn cross_product(a: Point, b: Point) -> Point {
+    Point {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+    }
+}
+fn dot_product(a: Point, b: Point) -> f32 {
+    a.x * b.x + a.y * b.y + a.z * b.z
 }
