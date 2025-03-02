@@ -1,16 +1,16 @@
 extern crate winapi;
-use std::cmp::{max, min, Ordering, PartialEq};
-use std::ptr::{null, null_mut};
+use std::cmp::{PartialEq};
+use std::ptr::{null_mut};
 use std::ffi::CString;
 use std::{ptr};
 use std::time::Instant;
-use winapi::shared::windef::{HBITMAP, HDC, HWND, RECT};
+use winapi::shared::windef::{HBITMAP, HDC, HWND, };
 use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
 use winapi::um::wingdi::{
-    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, BitBlt,
+    CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, GetClientRect, GetMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 
@@ -24,11 +24,11 @@ unsafe extern "system" fn window_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    match msg {
+    return match msg {
         WM_QUIT => {
-            return 0
+            0
         }
-        _ => return DefWindowProcA(hwnd, msg, w_param, l_param),
+        _ => DefWindowProcA(hwnd, msg, w_param, l_param),
     }
     0
 }
@@ -64,7 +64,7 @@ fn init_window() -> HWND {
         let hwnd = CreateWindowExA(
             0,                                   // Keine zusätzlichen Fensterstile
             class_name.as_ptr(),                 // Klassenname
-            CString::new("My Rust Window").unwrap().as_ptr(), // Fenstertitel
+            CString::new("rake").unwrap().as_ptr(), // Fenstertitel
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,    // Standardfensterstil
             CW_USEDEFAULT,                       // Standard-X-Position
             CW_USEDEFAULT,                       // Standard-Y-Position
@@ -101,7 +101,7 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
 }
 
 /// Framebuffer in das Fenster zeichnen
-unsafe fn draw_frame(hwnd: HWND, framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
+unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
 
     let event_start = Instant::now();
 
@@ -196,10 +196,11 @@ fn cleanup() {
 fn main() {
     unsafe{
         // Initialisiere das Fenster
-        let hwnd = init_window();
 
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
+        /*
+
 
         // Ziel-FPS festlegen
         let target_fps: u32 = 60;
@@ -210,17 +211,17 @@ fn main() {
             let frame_start = current_time_ns();
 
             // Verarbeite Nachrichten
-            //running = handle_window_events();
+            running = handle_window_events();
 
             // Aktualisiere die Szene (falls nötig)
-            //update_scene();
+            update_scene();
 
-            //draw_frame(hwnd,&mut framebuffer,WINDOW_WIDTH,WINDOW_HEIGHT);
+            draw_frame(hwnd,&mut framebuffer,WINDOW_WIDTH,WINDOW_HEIGHT);
 
             // Synchronisiere die Framerate
-            //wait_for_next_frame(frame_start, frame_duration);
-        //}
-
+            wait_for_next_frame(frame_start, frame_duration);
+        }
+        */
         let focal_length = 800.0;
         let mut polygons = vec![
             Polygon { vertices: vec![
@@ -245,21 +246,17 @@ fn main() {
             },*/
         ];
 
-        let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
 
-        let mut previous_time = Instant::now(); // Zeitpunkt vor dem Start des Frames
+        let hwnd = init_window();
 
         // Framebuffer Setup (Bitmap)
         let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
-        bitmap_info.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
         bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
         bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
         bitmap_info.bmiHeader.biPlanes = 1;
         bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
         bitmap_info.bmiHeader.biCompression = BI_RGB;
-
-
-
         let window_hdc = unsafe { get_window_hdc(hwnd) };
         let hdc: HDC = CreateCompatibleDC(window_hdc);
 
@@ -272,7 +269,11 @@ fn main() {
             null_mut(),
             0,
         );
+
+
         let mut counter: u64 = 0;
+        let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
+
         loop {
             /*
             let current_time = Instant::now();
@@ -311,13 +312,13 @@ fn main() {
 
 
             // Zeichne den Frame
-            draw_frame(hwnd, &framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
+            draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
 
 
             //let event_start = Instant::now();
             // Nachrichten abarbeiten (ohne blockieren)
             let mut msg: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, PM_REMOVE) > 0 {
+            while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) > 0 {
                 TranslateMessage(&msg); // Übersetze Tastatureingaben
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
@@ -332,10 +333,6 @@ fn main() {
             }
 
         }
-
-        let span = Instant::now() - previous_time;
-        print!("{}", counter / span.as_secs());
-
 
     }
    //cleanup();
@@ -576,7 +573,7 @@ impl Framebuffer {
 
                     // Interpolate depth
                     let z = w0 * v0.z + w1 * v1.z + w2 * v2.z;
-                    let index = (y as usize * self.width + x as usize);
+                    let index = y as usize * self.width + x as usize;
 
                     // Depth test
                     if z < self.z_buffer[index] {
@@ -703,7 +700,7 @@ fn ensure_ccw(vertices: &mut Vec<Point2D>) {
 
 fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool {
     let det = |p1: Point2D, p2: Point2D, p3: Point2D| -> f32 {
-        (p2.x - p1.x) as f32 * (p3.y - p1.y) as f32 - (p2.y - p1.y) as f32 * (p3.x - p1.x) as f32
+        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
     };
 
     let d1 = det(p, a, b);
