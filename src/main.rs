@@ -10,12 +10,13 @@ use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
+static mut POLYGONS: Option<Vec<Polygon>> = None;
 
 /// Windows-Prozedur - Hier wird das Rendering gesteuert
 unsafe extern "system" fn window_proc(
@@ -28,8 +29,37 @@ unsafe extern "system" fn window_proc(
         WM_QUIT => {
             0
         }
+        WM_KEYDOWN => {
+            if let Some(ref mut polygons) = POLYGONS {
+                match w_param as i32 {
+                    0x41 => { // 'A' - Nach links
+                        for polygon in polygons {
+                            polygon.translate(-1.0, 0.0, 0.0);
+                        }
+                    }
+                    0x44 => { // 'D' - Nach rechts
+                        for polygon in polygons {
+                            polygon.translate(1.0, 0.0, 0.0);
+                        }
+                    }
+                    0x57 => { // 'W' - Nach oben
+                        for polygon in polygons {
+                            polygon.translate(0.0, -1.0, 0.0);
+                        }
+                    }
+                    0x53 => { // 'S' - Nach unten
+                        for polygon in polygons {
+                            polygon.translate(0.0, 1.0, 0.0);
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            0
+        }
+
         _ => DefWindowProcA(hwnd, msg, w_param, l_param),
-    }
+    };
     0
 }
 
@@ -103,19 +133,19 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
 /// Framebuffer in das Fenster zeichnen
 unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
 
-    let event_start = Instant::now();
+    //let event_start = Instant::now();
 
     unsafe {
         std::slice::from_raw_parts_mut(pixels, width * height)
             .copy_from_slice(&framebuffer.pixels);
     }
 
-    let event_time = event_start.elapsed();
-    println!("Zeit für copy from slice: {:.2?}", event_time);
+    //let event_time = event_start.elapsed();
+    //println!("Zeit für copy from slice: {:.2?}", event_time);
 
     let old_object = SelectObject(hdc, hbitmap as *mut _);
 
-    let event_start = Instant::now();
+    //let event_start = Instant::now();
 
     // Zeichne die Bitmap auf das Fenster
     BitBlt(
@@ -130,32 +160,19 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
         SRCCOPY,
     );
 
-    let event_time = event_start.elapsed();
-    println!("Zeit für BitBlt und window_hdc: {:.2?}", event_time);
+   // let event_time = event_start.elapsed();
+    //println!("Zeit für BitBlt und window_hdc: {:.2?}", event_time);
 
-    let event_start = Instant::now();
+    //let event_start = Instant::now();
 
 
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
 
-    //DeleteObject(hbitmap as *mut _);
-    let event_time = event_start.elapsed();
-    println!("Zeit für Resourcenfreigabe: {:.2?}", event_time);
+    //let event_time = event_start.elapsed();
+    //println!("Zeit für Resourcenfreigabe: {:.2?}", event_time);
 }
 
-/// Framebuffer manipulieren (Szene rendern)
-fn render_scene(framebuffer: &mut [u32], width: usize, height: usize) {
-    for y in 0..height {
-        for x in 0..width {
-            let red = (x * 255 / width) as u32;    // Farbverlauf horizontal (Rot)
-            let green = (y * 255 / height) as u32; // Farbverlauf vertikal (Grün)
-            let blue = 128u32;                    // Konstant Blau
-
-            framebuffer[y * width + x] = 0xFF000000 | (red << 16) | (green << 8) | blue;
-        }
-    }
-}
 
 /// Nachrichtenschleife und Handling
 fn handle_window_events() -> bool {
@@ -180,6 +197,12 @@ fn update_scene() {
     // Hier kann Logik zur Szenenaktualisierung hinzugefügt werden
 }
 
+fn render_scene(polygons: &Vec<Polygon>, focal_length: f32, framebuffer: &mut Framebuffer){
+    for polygon in polygons {
+        let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
+        framebuffer.draw_polygon(&polygon_2d, polygon.color);
+    }
+}
 /// Dummy-Funktion: Aktuelle Zeit in Nanosekunden zurückgeben
 fn current_time_ns() -> u64 {
     0
@@ -195,34 +218,19 @@ fn cleanup() {
 
 fn main() {
     unsafe{
-        // Initialisiere das Fenster
 
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
-        /*
 
+        const FOCAL_LENGTH: f32 = 800.0;
+        POLYGONS = Some(vec![{
+            let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
+            polygon.add_point(Point::new(-1.0, -1.0, 5.0));
+            polygon.add_point(Point::new(1.0, -1.0, 5.0));
+            polygon.add_point(Point::new(0.0, 1.0, 5.0));
+            polygon
+        }]);
 
-        // Ziel-FPS festlegen
-        let target_fps: u32 = 60;
-        let frame_duration = 1_000_000_000 / target_fps as u64; // Dauer eines Frames in Nanosekunden
-
-        let mut running = true;
-        //while running {
-            let frame_start = current_time_ns();
-
-            // Verarbeite Nachrichten
-            running = handle_window_events();
-
-            // Aktualisiere die Szene (falls nötig)
-            update_scene();
-
-            draw_frame(hwnd,&mut framebuffer,WINDOW_WIDTH,WINDOW_HEIGHT);
-
-            // Synchronisiere die Framerate
-            wait_for_next_frame(frame_start, frame_duration);
-        }
-        */
-        let focal_length = 800.0;
         let mut polygons = vec![
             Polygon { vertices: vec![
                 Point::new(-1.0, -1.0, 8.0), // Links unten (näher)
@@ -271,10 +279,20 @@ fn main() {
         );
 
 
-        let mut counter: u64 = 0;
         let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
+        let mut msg: MSG = std::mem::zeroed();
 
         loop {
+
+            // Nachrichten abarbeiten (ohne blockieren)
+            //User Input etc
+            while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) > 0 {
+                if msg.message == WM_QUIT {
+                    return; // Beendet die Nachrichtenschleife
+                }
+                TranslateMessage(&msg); // Übersetze Tastatureingaben
+                DispatchMessageW(&msg); // Nachricht verarbeiten
+            }
             /*
             let current_time = Instant::now();
             let frame_time = current_time - previous_time; // Dauer des Frames
@@ -287,50 +305,24 @@ fn main() {
             // FPS ausgeben
             println!("Frames Per Second: {:.2}", fps);
             */
-            // Drehe das Polygon
-            counter += 1;
-            polygons[0].rotate_z(rotation_speed);
 
             //let event_start = Instant::now();
 
-            // Clear den Framebuffer, um die alten Frames zu überschreiben
+            // Clear den Framebuffer, um die alten Frames zu überschreiben ansonsten bleiben die alten im Bild
             framebuffer.clear();
 
             //let event_time = event_start.elapsed();
             //println!("Zeit für framebuffclear: {:.2?}", event_time);
 
-
-            //let event_start = Instant::now();
-            // Zeichne alle Polygone
-            for polygon in &polygons {
-                let polygon_2d = project_polygon(&polygon, focal_length, framebuffer.width, framebuffer.height);
-                framebuffer.draw_polygon(&polygon_2d, polygon.color);
-            }
-
-             //let event_time = event_start.elapsed();
-             //println!("Zeit für Polygone: {:.2?}", event_time);
-
+            // Zeichne alle Polygone in den framebuffer
+            unsafe {
+                if let Some(ref polygons) = POLYGONS {
+                    render_scene(polygons, 800.0, &mut framebuffer);
+                }
+            };
 
             // Zeichne den Frame
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
-
-
-            //let event_start = Instant::now();
-            // Nachrichten abarbeiten (ohne blockieren)
-            let mut msg: MSG = std::mem::zeroed();
-            while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) > 0 {
-                TranslateMessage(&msg); // Übersetze Tastatureingaben
-                DispatchMessageW(&msg); // Nachricht verarbeiten
-            }
-
-            //let event_time = event_start.elapsed();
-           // println!("Zeit für message: {:.2?}", event_time);
-
-
-            // Beende die Schleife, wenn das Fenster geschlossen wird
-            if !handle_window_events() {
-                break;
-            }
 
         }
 
@@ -384,6 +376,14 @@ impl Polygon {
     /// Get the number of points in the polygon.
     pub fn num_points(&self) -> usize {
         self.vertices.len()
+    }
+
+    pub fn translate(&mut self, dx: f32, dy: f32, dz: f32) {
+        for vertex in &mut self.vertices {
+            vertex.x += dx;
+            vertex.y += dy;
+            vertex.z += dz;
+        }
     }
 
     pub fn rotate_z(&mut self, angle_radians: f32) {
@@ -473,13 +473,7 @@ impl Framebuffer {
         }
     }
 
-    fn swap(&mut self, new_framebuffer: &mut Framebuffer) {
-        // Swap the contents of the framebuffers (this way we don't move the buffer)
-        std::mem::swap(&mut self.pixels, &mut new_framebuffer.pixels);
-        std::mem::swap(&mut self.z_buffer, &mut new_framebuffer.z_buffer);
-    }
     fn clear(&mut self) {
-
         unsafe {
             let pixel_ptr = self.pixels.as_mut_ptr();
             for i in 0..self.pixels.len() {
@@ -498,28 +492,19 @@ impl Framebuffer {
 
 
         fn draw_polygon(&mut self, polygon: &Polygon2D, color: u32) {
+
+            // Kein gültiges Polygon wenn weniger als 3 Vertexe
             if polygon.vertices.len() < 3 {
-                return; // Kein gültiges Polygon
+                return;
             }
 
-            //let event_start = Instant::now();
-
+            //Erstellt dreiecke aus dem Polygon
             let triangles = triangulate_ear_clipping(polygon);
 
-            //let event_time = event_start.elapsed();
-            //println!("Zeit für triangulate_ear_clipping(polygon): {:.2?}", event_time);
-
-            //let event_start = Instant::now();
-
-            // Render jedes Dreieck separat
+            // Render jedes der Dreiecke separat
             for (v0, v1, v2) in triangles {
                 self.rasterize_triangle(v0, v1, v2, color);
             }
-
-            //let event_time = event_start.elapsed();
-            //println!("Zeit für alle dreiecke rasterizen: {:.2?}", event_time);
-
-
     }
     fn rasterize_triangle(&mut self, v0: Point2D, v1: Point2D, v2: Point2D, color: u32) {
         // Snap vertices to pixel grid
@@ -602,8 +587,8 @@ fn triangulate_ear_clipping(polygon: &Polygon2D) -> Vec<(Point2D, Point2D, Point
         ];
     }
 
+    //Sicher gehen dass eingegebenes Polygon auch ccw ist sonst reversen
     ensure_ccw(&mut vertices);
-
 
     while vertices.len() > 3 {
         let mut ear_found = false;
@@ -623,7 +608,6 @@ fn triangulate_ear_clipping(polygon: &Polygon2D) -> Vec<(Point2D, Point2D, Point
             }
             else {
             }
-
         }
 
         if !ear_found {
@@ -639,7 +623,7 @@ fn triangulate_ear_clipping(polygon: &Polygon2D) -> Vec<(Point2D, Point2D, Point
     triangles
 }
 
-
+#[inline(always)]
 fn snap_to_pixel(point: Point2D) -> Point2D {
     Point2D {
         x: point.x.round(),
@@ -648,9 +632,8 @@ fn snap_to_pixel(point: Point2D) -> Point2D {
     }
 }
 
+#[inline(always)]
 fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> bool {
-
-
     if !is_ccw(prev, curr, next) {
         return false; // Das Dreieck ist nicht gegen den Uhrzeigersinn
     }
@@ -661,23 +644,22 @@ fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> 
             return false;
         }
     }
-
     true
 }
 
+#[inline(always)]
 fn is_ccw(p1: Point2D, p2: Point2D, p3: Point2D) -> bool {
 
     let cross_product = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
-
 
     if cross_product > 0.0 {
         true // Gegen den Uhrzeigersinn
     } else {
         false
     }
-
 }
 
+#[inline(always)]
 fn is_polygon_ccw(vertices: &[Point2D]) -> bool {
     let mut sum = 0.0;
     for i in 0..vertices.len() {
@@ -692,12 +674,14 @@ fn is_polygon_ccw(vertices: &[Point2D]) -> bool {
     }
 }
 
+#[inline(always)]
 fn ensure_ccw(vertices: &mut Vec<Point2D>) {
     if !is_polygon_ccw(vertices) {
         vertices.reverse();
     }
 }
 
+#[inline(always)]
 fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool {
     let det = |p1: Point2D, p2: Point2D, p3: Point2D| -> f32 {
         (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
@@ -711,5 +695,4 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
     let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
-
 }
