@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 winapi = { version = "0.3.9", features = ["windef", "minwindef", "wingdi", "winuser", "winnt", "libloaderapi"] }
 lazy_static = "1.4"
+image = "0.25.5"
 
 [profile.release]
 opt-level = 3      # Max optimization (best performance)

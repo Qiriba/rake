@@ -14,6 +14,8 @@ mod camera;
 pub use camera::Camera;
 
 mod framebuffer;
+mod texture;
+
 pub use framebuffer::Framebuffer;
 
 extern crate winapi;
@@ -33,7 +35,7 @@ use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, Pee
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
-
+use crate::texture::Texture;
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
@@ -108,22 +110,22 @@ unsafe fn handle_input() {
         // Bewegung
 
         if keys['W' as usize] {
-            camera.move_forward(0.001); // W-Taste bewegt die Kamera vorwärts
+            camera.move_forward(0.1); // W-Taste bewegt die Kamera vorwärts
         }
         if keys['S' as usize] {
-            camera.move_backward(0.001); // S-Taste bewegt die Kamera rückwärts
+            camera.move_backward(0.1); // S-Taste bewegt die Kamera rückwärts
         }
         if keys['D' as usize] {
-            camera.strafe_right(0.001); // D-Taste bewegt die Kamera nach rechts
+            camera.strafe_right(0.1); // D-Taste bewegt die Kamera nach rechts
         }
         if keys['A' as usize] {
-            camera.strafe_left(0.001); // A-Taste bewegt die Kamera nach links
+            camera.strafe_left(0.1); // A-Taste bewegt die Kamera nach links
         }
 
 
         // Rotation
         if keys[0x51] { // 'Q' - Drehe um +10° (X-Achse)
-            camera.look_left(0.001);
+            camera.look_left(0.01);
         }
         if keys[0x52] { // 'R' - Drehe um +10° (Y-Achse)
             for polygon in polygons.iter_mut() {
@@ -132,7 +134,7 @@ unsafe fn handle_input() {
             }
         }
         if keys[0x45] { // 'E' - Drehe um +10° (Z-Achse)
-            camera.look_right(0.001);
+            camera.look_right(0.01);
         }
 
         // Skalierung
@@ -293,7 +295,7 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
     framebuffer.clear(); // Framebuffer leeren
 
     for polygon in polygons {
-        println!("Polygon: {:?}", polygon);
+        //println!("Polygon: {:?}", polygon);
 
         // Projiziere jedes Polygon
         let projected_polygon = project_polygon(
@@ -303,8 +305,7 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
             WINDOW_WIDTH,
             WINDOW_HEIGHT,
         );
-
-        framebuffer.draw_polygon(&projected_polygon, polygon.color); // Zeichne Polygon
+        framebuffer.draw_polygon(&projected_polygon, Option::from(&polygon.texture), polygon.color); // Zeichne Polygon
     }
 
 }
@@ -328,12 +329,21 @@ fn main() {
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
+        let texture = Texture::from_file("C:\\Users\\Tobias\\Pictures\\texture.jpg");
         const FOCAL_LENGTH: f32 = 800.0;
         POLYGONS = Some(vec![{
             let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
             polygon.add_point(Point::new(-1.0, -1.0, 5.0));
             polygon.add_point(Point::new(1.0, -1.0, 5.0));
             polygon.add_point(Point::new(0.0, 1.0, 5.0));
+            polygon.add_texture(texture.clone());
+            polygon.set_tex_coords(vec![
+    (0.0, 1.0), // unten-links
+    (1.0, 1.0), // unten-rechts
+    (1.0, 0.0), // oben-rechts
+    (0.0, 0.0), // oben-links
+]
+            );
             polygon
         }]);
 
@@ -362,10 +372,10 @@ fn main() {
         );
 
 
-        let rotation_speed = 0.0174533; // 1 Grad in Radiant (1° = π/180)
-        let mut msg: MSG = std::mem::zeroed();
+       let mut msg: MSG = std::mem::zeroed();
 
         loop {
+            let event_start = Instant::now();
 
             // Nachrichten abarbeiten (ohne blockieren)
             //User Input etc
@@ -377,6 +387,7 @@ fn main() {
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
             handle_input();
+
             /*
             let current_time = Instant::now();
             let frame_time = current_time - previous_time; // Dauer des Frames
@@ -398,6 +409,7 @@ fn main() {
             //let event_time = event_start.elapsed();
             //println!("Zeit für framebuffclear: {:.2?}", event_time);
 
+
             // Zeichne alle Polygone in den framebuffer
             unsafe {
                 if let Some(ref polygons) = POLYGONS {
@@ -405,8 +417,11 @@ fn main() {
                 }
             };
 
+
             // Zeichne den Frame
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
+            let event_time = event_start.elapsed();
+            println!("Zeit für alles: {:.2?}", event_time);
 
         }
 
@@ -424,84 +439,117 @@ fn project_polygon(
     screen_height: usize,
 ) -> Polygon2D {
     let mut vertices_2d: Vec<Point2D> = Vec::new();
-    println!("view_matrix {:?}", view_matrix);
-    for vertex in &polygon.vertices {
+    let mut uv_coords_2d: Vec<(f32, f32)> = Vec::new();
 
+    for (vertex, uv) in polygon.vertices.iter().zip(&polygon.tex_coords) {
         // 1. Transformiere den Vertex in den View-Space
         let view_transformed = view_matrix.multiply_point(vertex);
-        println!("View Transformed Vertex: {:?}", view_transformed);
 
-
-        // 2. Überprüfen, ob der Punkt vor der Kamera liegt (z > 0)
+        // 2. Punkt muss vor der Kamera liegen
         if view_transformed.z > 0.0 {
             // 3. Projiziere den Punkt in den Clip-Space
             let projected = projection_matrix.multiply_point(&view_transformed);
 
             // 4. Perspektivische Division (Normalisierung)
-            let x_ndc = projected.x / projected.z; // Normalized Device Coordinates (NDC)
+            let x_ndc = projected.x / projected.z;
             let y_ndc = projected.y / projected.z;
 
-            // 5. Konvertiere den Punkt in Bildschirmkoordinaten (Screen-Space)
+            // 5. Konvertiere in Bildschirmkoordinaten
             let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
             let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
 
-            // Füge den Punkt zur Liste hinzu
+            // Füge den Punkt in 2D-Liste ein
             vertices_2d.push(Point2D {
                 x: screen_x,
                 y: screen_y,
-                z: projected.z, // Tiefeninformation beibehalten
+                z: projected.z, // Behalte Tiefeninformation
             });
+
+            // UV-Texturkoordinate unverändert weitergeben
+            uv_coords_2d.push(*uv);
         }
     }
 
-    // Rückgabe des projizierten 2D-Polygons
-    Polygon2D { vertices: vertices_2d }
+    // Rückgabe des projizierten Polygons in 2D (mit UV-Koordinaten, falls vorhanden)
+    Polygon2D {
+        vertices: vertices_2d,
+        uv_coords: uv_coords_2d,
+    }
 }
 
 
-fn triangulate_ear_clipping(polygon: &Polygon2D) -> Vec<(Point2D, Point2D, Point2D)> {
-    let mut triangles = Vec::new();
+fn triangulate_ear_clipping(
+    polygon: &Polygon2D,
+) -> Vec<((Point2D, (f32, f32)), (Point2D, (f32, f32)), (Point2D, (f32, f32)))> {
     let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
+    let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
+    let mut triangles = Vec::new();
 
-    if polygon.vertices.len() == 4 {
-        // Rechteck/Quadrat besonderer Fall – einfache Zwei-Dreiecks-Zerlegung
+    // Rechteck/Quadrat: Sonderfall – einfache Zwei-Dreiecks-Zerlegung
+    if vertices.len() == 4 {
         return vec![
-            (polygon.vertices[0], polygon.vertices[1], polygon.vertices[2]),
-            (polygon.vertices[2], polygon.vertices[3], polygon.vertices[0]),
+            (
+                (vertices[0], uv_coords[0]),
+                (vertices[1], uv_coords[1]),
+                (vertices[2], uv_coords[2]),
+            ),
+            (
+                (vertices[2], uv_coords[2]),
+                (vertices[3], uv_coords[3]),
+                (vertices[0], uv_coords[0]),
+            ),
         ];
     }
 
-    //Sicher gehen dass eingegebenes Polygon auch ccw ist sonst reversen
+    // Sicherstellen, dass das Polygon in CCW-Reihenfolge (Counter-Clockwise) vorliegt
     ensure_ccw(&mut vertices);
 
+    // Starte die Triangulation
     while vertices.len() > 3 {
         let mut ear_found = false;
 
-        // Finde ein Ohr
+        // Finde ein "Ohr" im Polygon
         for i in 0..vertices.len() {
-            let prev = vertices[(i + vertices.len() - 1) % vertices.len()]; // Vorheriger Punkt
-            let curr = vertices[i]; // Aktueller Punkt
-            let next = vertices[(i + 1) % vertices.len()]; // Nächster Punkt
+            // Vorheriger, aktueller und nächster Punkt
+            let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
+            let prev_uv = uv_coords[(i + uv_coords.len() - 1) % uv_coords.len()];
+            let curr = vertices[i];
+            let curr_uv = uv_coords[i];
+            let next = vertices[(i + 1) % vertices.len()];
+            let next_uv = uv_coords[(i + 1) % uv_coords.len()];
 
+            // Prüfe, ob ein Ohr gefunden wurde
             if is_ear(prev, curr, next, &vertices) {
-                // Ein Ohr wurde gefunden
-                triangles.push((prev, curr, next));
+                // Füge das Ohr als ein Dreieck hinzu
+                triangles.push((
+                    (prev, prev_uv),
+                    (curr, curr_uv),
+                    (next, next_uv),
+                ));
+
+                // Entferne den aktuellen Punkt und seine UVs aus der Liste
                 vertices.remove(i);
+                uv_coords.remove(i);
+
                 ear_found = true;
                 break;
             }
-            else {
-            }
         }
 
+        // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich
+        // ungültig oder zu komplex.
         if !ear_found {
-            panic!("Triangulation fehlgeschlagen – ungültiges oder komplexes Polygon?");
+            panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");
         }
     }
 
-    // Füge das letzte verbleibende Dreieck hinzu
+    // Füge das letzte verbleibende Dreieck hinzu (wenn noch genau 3 Punkte übrig sind)
     if vertices.len() == 3 {
-        triangles.push((vertices[0], vertices[1], vertices[2]));
+        triangles.push((
+            (vertices[0], uv_coords[0]),
+            (vertices[1], uv_coords[1]),
+            (vertices[2], uv_coords[2]),
+        ));
     }
 
     triangles
