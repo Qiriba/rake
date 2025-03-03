@@ -1,4 +1,5 @@
 use crate::{Matrix4x4, Point};
+use crate::Point2D;
 
 #[derive(Debug)]
 pub struct Polygon {
@@ -74,6 +75,10 @@ impl Polygon {
         let translation_back = (center_x, center_y, center_z);
         self.transform_full(translation_back, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
     }
-
-
 }
+
+#[derive(Clone, Debug)]
+pub struct Polygon2D {
+    pub vertices: Vec<Point2D>,
+}
+

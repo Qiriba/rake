@@ -85,3 +85,32 @@ impl PartialEq for Point2D {
             (self.z - other.z).abs() < f32::EPSILON
     }
 }
+
+pub fn normalize(vec: Point) -> Point {
+    let magnitude = (vec.x * vec.x + vec.y * vec.y + vec.z * vec.z).sqrt();
+    Point {
+        x: vec.x / magnitude,
+        y: vec.y / magnitude,
+        z: vec.z / magnitude,
+    }
+}
+pub fn cross_product(a: Point, b: Point) -> Point {
+    Point {
+        x: a.y * b.z - a.z * b.y,
+        y: a.z * b.x - a.x * b.z,
+        z: a.x * b.y - a.y * b.x,
+    }
+}
+pub fn dot_product(a: Point, b: Point) -> f32 {
+    a.x * b.x + a.y * b.y + a.z * b.z
+}
+
+
+#[inline(always)]
+pub fn snap_to_pixel(point: Point2D) -> Point2D {
+    Point2D {
+        x: point.x.round(),
+        y: point.y.round(),
+        z: point.z, // z kann unangetastet bleiben
+    }
+}

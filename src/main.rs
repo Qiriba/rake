@@ -8,6 +8,10 @@ pub use matrix4x4::Matrix4x4;
 
 mod polygon;
 pub use polygon::Polygon;
+pub use polygon::Polygon2D;
+
+mod camera;
+pub use camera::Camera;
 
 extern crate winapi;
 use std::cmp::{PartialEq};
@@ -26,6 +30,7 @@ use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, Pee
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
+
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
@@ -89,6 +94,7 @@ unsafe extern "system" fn window_proc(
     };
     0
 }
+
 unsafe fn handle_input() {
     let keys = KEYS.lock().unwrap();
 
@@ -141,6 +147,7 @@ unsafe fn handle_input() {
         }
     }
 }
+
 /// Initialisierung eines Fensters
 fn init_window() -> HWND {
     unsafe {
@@ -450,12 +457,6 @@ fn project_polygon(
     Polygon2D { vertices: vertices_2d }
 }
 
-#[derive(Clone, Debug)]
-struct Polygon2D {
-    vertices: Vec<Point2D>,
-}
-
-
 #[derive(Clone)]
 struct Framebuffer {
     width: usize,
@@ -509,9 +510,9 @@ impl Framebuffer {
     }
     fn rasterize_triangle(&mut self, v0: Point2D, v1: Point2D, v2: Point2D, color: u32) {
         // Snap vertices to pixel grid
-        let v0 = snap_to_pixel(v0);
-        let v1 = snap_to_pixel(v1);
-        let v2 = snap_to_pixel(v2);
+        let v0 = point::snap_to_pixel(v0);
+        let v1 = point::snap_to_pixel(v1);
+        let v2 = point::snap_to_pixel(v2);
 
         // Compute bounding box, clamped to screen size
         let min_x = v0.x.min(v1.x).min(v2.x).max(0.0) as i32;
@@ -625,15 +626,6 @@ fn triangulate_ear_clipping(polygon: &Polygon2D) -> Vec<(Point2D, Point2D, Point
 }
 
 #[inline(always)]
-fn snap_to_pixel(point: Point2D) -> Point2D {
-    Point2D {
-        x: point.x.round(),
-        y: point.y.round(),
-        z: point.z, // z kann unangetastet bleiben
-    }
-}
-
-#[inline(always)]
 fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> bool {
     if !is_ccw(prev, curr, next) {
         return false; // Das Dreieck ist nicht gegen den Uhrzeigersinn
@@ -696,117 +688,4 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
     let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
-}
-
-#[derive(Debug)]
-pub struct Camera {
-    pub position: Point,         // Position der Kamera
-    pub forward: Point,          // Richtung, in die die Kamera schaut
-    pub up: Point,               // "Up"-Vektor der Kamera
-    pub fov: f32,                // Field of View (FOV), in Grad
-    pub aspect_ratio: f32,       // Breite / Höhe des Fensters
-    pub near: f32,               // Near-Clipping-Plane
-    pub far: f32,                // Far-Clipping-Plane
-}
-
-impl Camera {
-    pub fn new(position: Point, forward: Point, up: Point, fov: f32, aspect_ratio: f32, near: f32, far: f32) -> Self {
-        Self {
-            position,
-            forward,
-            up,
-            fov,
-            aspect_ratio,
-            near,
-            far,
-        }
-    }
-
-    // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
-    pub fn view_matrix(&self) -> Matrix4x4 {
-        let forward = normalize(self.forward);
-        let right = normalize(cross_product(forward, self.up));
-        let up = cross_product(right, forward);
-
-        let tx = -dot_product(right, self.position);
-        let ty = -dot_product(up, self.position);
-        let tz = dot_product(forward, self.position);
-
-        Matrix4x4 {
-            data: [
-                [right.x, up.x, -forward.x, 0.0],
-                [right.y, up.y, -forward.y, 0.0],
-                [right.z, up.z, -forward.z, 0.0],
-                [tx, ty, tz, 1.0],
-            ],
-        }
-    }
-
-    // Funktion zur Erstellung einer Projektion-Matrix (zur 2D-Projektion)
-    pub fn projection_matrix(&self) -> Matrix4x4 {
-        let fov_rad = (self.fov.to_radians() / 2.0).tan();
-        Matrix4x4 {
-            data: [
-                [1.0 / (self.aspect_ratio * fov_rad), 0.0, 0.0, 0.0],
-                [0.0, 1.0 / fov_rad, 0.0, 0.0],
-                [0.0, 0.0, self.far / (self.far - self.near), 1.0],
-                [0.0, 0.0, (-self.far * self.near) / (self.far - self.near), 0.0],
-            ],
-        }
-    }
-    pub fn move_forward(&mut self, distance: f32) {
-        self.position = self.position - self.forward.normalize() * distance;
-    }
-
-    pub fn move_backward(&mut self, distance: f32) {
-        self.position = self.position + self.forward.normalize() * distance;
-    }
-
-    pub fn strafe_right(&mut self, distance: f32) {
-        let right = self.forward.cross(self.up).normalize();
-        self.position = self.position + right * distance;
-    }
-
-    pub fn strafe_left(&mut self, distance: f32) {
-        let right = self.forward.cross(self.up).normalize();
-        self.position = self.position - right * distance;
-    }
-
-    pub fn move_up(&mut self, distance: f32) {
-        self.position = self.position - self.up.normalize() * distance;
-    }
-
-    pub fn move_down(&mut self, distance: f32) {
-        self.position = self.position + self.up.normalize() * distance;
-    }
-
-    pub fn look_right(&mut self, angle_radians: f32) {
-        // Rotiert die Kamera um die "Up"-Achse nach rechts.
-        let rotation_matrix = Matrix4x4::rotation_around_axis(self.up, -angle_radians);
-        self.forward = rotation_matrix.multiply_point(&self.forward).normalize();
-    }
-
-    pub fn look_left(&mut self, angle_radians: f32) {
-        // Rotiert die Kamera um die "Up"-Achse nach links.
-        self.look_right(-angle_radians); // Nach links ist die negative Richtung zu "look_right".
-    }
-
-}
-fn normalize(vec: Point) -> Point {
-    let magnitude = (vec.x * vec.x + vec.y * vec.y + vec.z * vec.z).sqrt();
-    Point {
-        x: vec.x / magnitude,
-        y: vec.y / magnitude,
-        z: vec.z / magnitude,
-    }
-}
-fn cross_product(a: Point, b: Point) -> Point {
-    Point {
-        x: a.y * b.z - a.z * b.y,
-        y: a.z * b.x - a.x * b.z,
-        z: a.x * b.y - a.y * b.x,
-    }
-}
-fn dot_product(a: Point, b: Point) -> f32 {
-    a.x * b.x + a.y * b.y + a.z * b.z
 }
