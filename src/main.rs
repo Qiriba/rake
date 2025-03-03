@@ -1,3 +1,11 @@
+mod point;
+pub use point::Point;
+pub use point::Point2D;
+
+
+mod matrix4x4;
+pub use matrix4x4::Matrix4x4;
+
 extern crate winapi;
 use std::cmp::{PartialEq};
 use std::ptr::{null_mut};
@@ -395,87 +403,6 @@ fn main() {
    //cleanup();
 }
 
-/// A 3D point.
-#[derive(Debug, Clone, Copy)]
-pub struct Point {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32
-}
-
-impl Point {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Point { x, y , z}
-    }
-    pub fn dot(self, other: Point) -> f32 {
-        self.x * other.x + self.y * other.y + self.z * other.z
-    }
-
-    pub fn normalize(self) -> Point {
-        let magnitude = (self.x * self.x + self.y * self.y + self.z * self.z).sqrt();
-        Point {
-            x: self.x / magnitude,
-            y: self.y / magnitude,
-            z: self.z / magnitude,
-        }
-    }
-
-    pub fn cross(self, other: Point) -> Point {
-        Point {
-            x: self.y * other.z - self.z * other.y,
-            y: self.z * other.x - self.x * other.z,
-            z: self.x * other.y - self.y * other.x,
-        }
-    }
-}
-
-// Addition und Subtraktion für die Vektoroperationen
-use std::ops::{Add, Mul, Sub};
-
-impl Add for Point {
-    type Output = Point;
-    fn add(self, other: Point) -> Point {
-        Point {
-            x: self.x + other.x,
-            y: self.y + other.y,
-            z: self.z + other.z,
-        }
-    }
-}
-
-impl Sub for Point {
-    type Output = Point;
-    fn sub(self, other: Point) -> Point {
-        Point {
-            x: self.x - other.x,
-            y: self.y - other.y,
-            z: self.z - other.z,
-        }
-    }
-}
-
-impl Mul<f32> for Point {
-    type Output = Point;
-
-    fn mul(self, scalar: f32) -> Point {
-        Point {
-            x: self.x * scalar,
-            y: self.y * scalar,
-            z: self.z * scalar,
-        }
-    }
-}
-
-
-fn project_point_3d_to_2d(point: Point, focal_length: f32) -> (f32, f32) {
-    // Perspective projection formula
-    let x_proj = point.x * focal_length / point.z;
-    let y_proj = point.y * focal_length / point.z;
-
-
-    (x_proj, y_proj)
-}
-
 /// A polygon defined as a list of vertices.
 #[derive(Debug)]
 pub struct Polygon {
@@ -497,31 +424,6 @@ impl Polygon {
         self.vertices.push(point);
     }
 
-    /// Get the number of points in the polygon.
-    pub fn num_points(&self) -> usize {
-        self.vertices.len()
-    }
-
-    pub fn translate(&mut self, dx: f32, dy: f32, dz: f32) {
-        for vertex in &mut self.vertices {
-            vertex.x += dx;
-            vertex.y += dy;
-            vertex.z += dz;
-        }
-    }
-
-    pub fn transform(&mut self, matrix: Matrix4x4) {
-        for vertex in &mut self.vertices {
-            *vertex = matrix.multiply_point(vertex);
-        }
-    }
-
-    pub fn rotate_z(&mut self, angle_radians: f32) {
-        // Wende die Rotation auf jeden Punkt an
-        for vertex in self.vertices.iter_mut() {
-            *vertex = rotate_point_around_z(*vertex, angle_radians);
-        }
-    }
 
     pub fn transform_full(
         &mut self,
@@ -622,37 +524,11 @@ fn project_polygon(
     Polygon2D { vertices: vertices_2d }
 }
 
-
-#[derive(Copy, Clone, Debug)]
-struct Point2D {
-    x: f32,
-    y: f32,
-    z: f32,
-}
-
 #[derive(Clone, Debug)]
 struct Polygon2D {
     vertices: Vec<Point2D>,
 }
 
-impl PartialEq for Point2D {
-    fn eq(&self, other: &Self) -> bool {
-        self.x == other.x &&
-        self.y == other.y &&
-        (self.z - other.z).abs() < f32::EPSILON
-    }
-}
-
-fn rotate_point_around_z(point: Point, angle_radians: f32) -> Point {
-    let cos_theta = angle_radians.cos();
-    let sin_theta = angle_radians.sin();
-
-    Point {
-        x: point.x * cos_theta - point.y * sin_theta,
-        y: point.x * sin_theta + point.y * cos_theta,
-        z: point.z, // z bleibt unverändert
-    }
-}
 
 #[derive(Clone)]
 struct Framebuffer {
@@ -896,148 +772,6 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Matrix4x4 {
-    pub data: [[f32; 4]; 4],
-}
-
-impl Matrix4x4 {
-    pub fn identity() -> Self {
-        Self {
-            data: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-        }
-    }
-    pub fn rotation_around_axis(axis: Point, angle_radians: f32) -> Matrix4x4 {
-        let normalized_axis = axis.normalize(); // Achse normalisieren
-        let x = normalized_axis.x;
-        let y = normalized_axis.y;
-        let z = normalized_axis.z;
-
-        let cos_theta = angle_radians.cos();
-        let sin_theta = angle_radians.sin();
-        let one_minus_cos = 1.0 - cos_theta;
-
-        Matrix4x4 {
-            data: [
-                [
-                    cos_theta + x * x * one_minus_cos,
-                    x * y * one_minus_cos - z * sin_theta,
-                    x * z * one_minus_cos + y * sin_theta,
-                    0.0,
-                ],
-                [
-                    y * x * one_minus_cos + z * sin_theta,
-                    cos_theta + y * y * one_minus_cos,
-                    y * z * one_minus_cos - x * sin_theta,
-                    0.0,
-                ],
-                [
-                    z * x * one_minus_cos - y * sin_theta,
-                    z * y * one_minus_cos + x * sin_theta,
-                    cos_theta + z * z * one_minus_cos,
-                    0.0,
-                ],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-        }
-    }
-
-    pub fn multiply_point(&self, point: &Point) -> Point {
-        let x = self.data[0][0] * point.x
-            + self.data[1][0] * point.y
-            + self.data[2][0] * point.z
-            + self.data[3][0];
-        let y = self.data[0][1] * point.x
-            + self.data[1][1] * point.y
-            + self.data[2][1] * point.z
-            + self.data[3][1];
-        let z = self.data[0][2] * point.x
-            + self.data[1][2] * point.y
-            + self.data[2][2] * point.z
-            + self.data[3][2];
-        let w = self.data[0][3] * point.x
-            + self.data[1][3] * point.y
-            + self.data[2][3] * point.z
-            + self.data[3][3];
-
-
-        // Perspektivische Division, wenn w != 1.0
-        if w != 0.0 {
-            Point {
-                x: x / w,
-                y: y / w,
-                z: z / w,
-            }
-        } else {
-            Point { x, y, z }
-        }
-
-    }
-
-    pub fn multiply(&self, other: &Matrix4x4) -> Matrix4x4 {
-        let mut result = Matrix4x4::identity();
-        for i in 0..4 {
-            for j in 0..4 {
-                result.data[i][j] = (0..4).map(|k| self.data[i][k] * other.data[k][j]).sum();
-            }
-        }
-        result
-    }
-    pub fn translate(tx: f32, ty: f32, tz: f32) -> Self {
-        let mut matrix = Matrix4x4::identity();
-        matrix.data[0][3] = tx;
-        matrix.data[1][3] = ty;
-        matrix.data[2][3] = tz;
-        matrix
-    }
-
-    pub fn scale(sx: f32, sy: f32, sz: f32) -> Self {
-        let mut matrix = Matrix4x4::identity();
-        matrix.data[0][0] = sx;
-        matrix.data[1][1] = sy;
-        matrix.data[2][2] = sz;
-        matrix
-    }
-
-    pub fn rotate_z(angle: f32) -> Self {
-        let mut matrix = Matrix4x4::identity();
-        let cos_theta = angle.cos();
-        let sin_theta = angle.sin();
-        matrix.data[0][0] = cos_theta;
-        matrix.data[0][1] = -sin_theta;
-        matrix.data[1][0] = sin_theta;
-        matrix.data[1][1] = cos_theta;
-        matrix
-    }
-
-    pub fn rotate_x(angle: f32) -> Self {
-        let mut matrix = Matrix4x4::identity();
-        let cos_theta = angle.cos();
-        let sin_theta = angle.sin();
-        matrix.data[1][1] = cos_theta;
-        matrix.data[1][2] = -sin_theta;
-        matrix.data[2][1] = sin_theta;
-        matrix.data[2][2] = cos_theta;
-        matrix
-    }
-
-    pub fn rotate_y(angle: f32) -> Self {
-        let mut matrix = Matrix4x4::identity();
-        let cos_theta = angle.cos();
-        let sin_theta = angle.sin();
-        matrix.data[0][0] = cos_theta;
-        matrix.data[0][2] = sin_theta;
-        matrix.data[2][0] = -sin_theta;
-        matrix.data[2][2] = cos_theta;
-        matrix
-    }
-
-}
 #[derive(Debug)]
 pub struct Camera {
     pub position: Point,         // Position der Kamera
