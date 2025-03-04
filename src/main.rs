@@ -15,6 +15,7 @@ pub use camera::Camera;
 
 mod framebuffer;
 mod texture;
+mod object;
 
 pub use framebuffer::Framebuffer;
 
@@ -110,16 +111,16 @@ unsafe fn handle_input() {
         // Bewegung
 
         if keys['W' as usize] {
-            camera.move_forward(0.1); // W-Taste bewegt die Kamera vorwärts
+            camera.move_forward(0.001); // W-Taste bewegt die Kamera vorwärts
         }
         if keys['S' as usize] {
-            camera.move_backward(0.1); // S-Taste bewegt die Kamera rückwärts
+            camera.move_backward(0.001); // S-Taste bewegt die Kamera rückwärts
         }
         if keys['D' as usize] {
-            camera.strafe_right(0.1); // D-Taste bewegt die Kamera nach rechts
+            camera.strafe_right(0.001); // D-Taste bewegt die Kamera nach rechts
         }
         if keys['A' as usize] {
-            camera.strafe_left(0.1); // A-Taste bewegt die Kamera nach links
+            camera.strafe_left(0.001); // A-Taste bewegt die Kamera nach links
         }
 
 
@@ -329,9 +330,25 @@ fn main() {
         //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
-        let texture = Texture::from_file("C:\\Users\\Tobias\\Pictures\\texture.jpg");
+        let texture = Texture::from_file(r#"C:\Users\Tobias\Pictures\4x_1.png"#);
+
+        let obj_path = r#"C:\Users\Tobias\RustroverProjects\rake\example.obj"#; // Pfad zur OBJ-Datei
+
+        // Lade die .obj-Daten
+        let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
+
+        let mut triangles = process_faces(&vertices, &faces);
+        for triangle in triangles.iter_mut() {
+            triangle.add_texture(texture.clone());
+            triangle.set_tex_coords(vec![
+                (0.0, 1.0), // unten-links
+                (1.0, 1.0), // unten-rechts
+                (0.5, 0.0), // oben-rechts
+            ]
+            );
+        }
         const FOCAL_LENGTH: f32 = 800.0;
-        POLYGONS = Some(vec![{
+        POLYGONS = Some(/*vec![{
             let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
             polygon.add_point(Point::new(-1.0, -1.0, 5.0));
             polygon.add_point(Point::new(1.0, -1.0, 5.0));
@@ -340,12 +357,14 @@ fn main() {
             polygon.set_tex_coords(vec![
     (0.0, 1.0), // unten-links
     (1.0, 1.0), // unten-rechts
-    (1.0, 0.0), // oben-rechts
-    (0.0, 0.0), // oben-links
+    (0.5, 0.0), // oben-rechts
 ]
             );
             polygon
-        }]);
+        }]*/
+
+        triangles
+        );
 
 
         let hwnd = init_window();
@@ -375,7 +394,6 @@ fn main() {
        let mut msg: MSG = std::mem::zeroed();
 
         loop {
-            let event_start = Instant::now();
 
             // Nachrichten abarbeiten (ohne blockieren)
             //User Input etc
@@ -403,8 +421,7 @@ fn main() {
 
             //let event_start = Instant::now();
 
-            // Clear den Framebuffer, um die alten Frames zu überschreiben ansonsten bleiben die alten im Bild
-            framebuffer.clear();
+
 
             //let event_time = event_start.elapsed();
             //println!("Zeit für framebuffclear: {:.2?}", event_time);
@@ -420,8 +437,6 @@ fn main() {
 
             // Zeichne den Frame
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
-            let event_time = event_start.elapsed();
-            println!("Zeit für alles: {:.2?}", event_time);
 
         }
 
@@ -619,3 +634,28 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }
+
+fn process_faces(vertices: &Vec<Point>, faces: &Vec<Vec<usize>>) -> Vec<Polygon> {
+    let mut polygons = Vec::new();
+
+    for face in faces {
+        if face.len() < 3 {
+            // Überspringe ungültige Faces
+            continue;
+        }
+
+        // Extrahiere die zugehörigen Punkte (Vertices) des Faces
+        let points: Vec<Point> = face.iter().map(|&index| vertices[index]).collect();
+        let mut polygon = Polygon::new(0xFFFFFFFF);
+        for point in &points {
+            polygon.add_point(*point);
+        }
+
+        // Füge die Punkte als ein neues Polygon ein
+        polygons.push(polygon);
+    }
+
+    polygons
+}
+
+
