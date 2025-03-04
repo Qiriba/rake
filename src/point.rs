@@ -6,6 +6,9 @@ pub struct Point {
     pub y: f32,
     pub z: f32
 }
+use std::ops::{Add, Mul, Sub};
+
+
 
 impl Point {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
@@ -13,6 +16,18 @@ impl Point {
     }
     pub fn dot(self, other: Point) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
+    pub fn magnitude(&self) -> f32 {
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    }
+    pub fn clamp_length(&self, max: f32) -> Point {
+        let length = self.magnitude();
+        if length > max {
+            // Scale the vector down to the maximum length
+            return self * (max / length);
+        }
+        *self // Return the original vector if clamping isn't needed
     }
 
     pub fn normalize(self) -> Point {
@@ -34,7 +49,27 @@ impl Point {
 }
 
 // Addition und Subtraktion für die Vektoroperationen
-use std::ops::{Add, Mul, Sub};
+impl Mul<f32> for &Point {
+    type Output = Point;
+    fn mul(self, scalar: f32) -> Point {
+        Point {
+            x: self.x * scalar,
+            y: self.y * scalar,
+            z: self.z * scalar,
+        }
+    }
+}
+
+impl Mul<f32> for Point {
+    type Output = Point;
+    fn mul(self, scalar: f32) -> Point {
+        Point {
+            x: self.x * scalar,
+            y: self.y * scalar,
+            z: self.z * scalar,
+        }
+    }
+}
 
 impl Add for Point {
     type Output = Point;
@@ -58,17 +93,6 @@ impl Sub for Point {
     }
 }
 
-impl Mul<f32> for Point {
-    type Output = Point;
-
-    fn mul(self, scalar: f32) -> Point {
-        Point {
-            x: self.x * scalar,
-            y: self.y * scalar,
-            z: self.z * scalar,
-        }
-    }
-}
 
 
 #[derive(Copy, Clone, Debug)]

@@ -25,14 +25,14 @@ use std::ptr::{null_mut};
 use std::ffi::CString;
 use std::{ptr};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winapi::shared::windef::{HBITMAP, HDC, HWND, };
 use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
 use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -102,56 +102,49 @@ unsafe extern "system" fn window_proc(
 }
 
 unsafe fn handle_input() {
-    let keys = KEYS.lock().unwrap();
+    let mut keys = KEYS.lock().unwrap();
 
-    let mut camera = CAMERA.lock().unwrap(); // Erlaubt Schreibzugriff
-
-    if let Some(ref mut polygons) = POLYGONS {
-
-        // Bewegung
-
-        if keys['W' as usize] {
-            camera.move_forward(0.001); // W-Taste bewegt die Kamera vorwärts
-        }
-        if keys['S' as usize] {
-            camera.move_backward(0.001); // S-Taste bewegt die Kamera rückwärts
-        }
-        if keys['D' as usize] {
-            camera.strafe_right(0.001); // D-Taste bewegt die Kamera nach rechts
-        }
-        if keys['A' as usize] {
-            camera.strafe_left(0.001); // A-Taste bewegt die Kamera nach links
-        }
-
-
-        // Rotation
-        if keys[0x51] { // 'Q' - Drehe um +10° (X-Achse)
-            camera.look_left(0.01);
-        }
-        if keys[0x52] { // 'R' - Drehe um +10° (Y-Achse)
-            for polygon in polygons.iter_mut() {
-                let rotation = (0.0, 10.0_f32.to_radians(), 0.0);
-                polygon.rotate_around_center(rotation);
-            }
-        }
-        if keys[0x45] { // 'E' - Drehe um +10° (Z-Achse)
-            camera.look_right(0.01);
-        }
-
-        // Skalierung
-        if keys[0x5A] { // 'Z' - Vergrößern (x1.1)
-            for polygon in polygons.iter_mut() {
-                let scale = (1.1, 1.1, 1.0);
-                polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
-            }
-        }
-        if keys[0x58] { // 'X' - Verkleinern (x0.9)
-            for polygon in polygons.iter_mut() {
-                let scale = (0.9, 0.9, 1.0);
-                polygon.transform_full((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), scale);
-            }
-        }
+    // Check key state for movement
+    if GetAsyncKeyState(b'A' as i32) < 0 {
+        keys[b'A' as usize] = true;
+    } else {
+        keys[b'A' as usize] = false;
     }
+
+    if GetAsyncKeyState(b'D' as i32) < 0 {
+        keys[b'D' as usize] = true;
+    } else {
+        keys[b'D' as usize] = false;
+    }
+
+    if GetAsyncKeyState(b'W' as i32) < 0 {
+        keys[b'W' as usize] = true;
+    } else {
+        keys[b'W' as usize] = false;
+    }
+
+    if GetAsyncKeyState(b'S' as i32) < 0 {
+        keys[b'S' as usize] = true;
+    } else {
+        keys[b'S' as usize] = false;
+    }
+
+    // Jump input (Space)
+    if GetAsyncKeyState(b'V' as i32) < 0 {
+        keys[b'V' as usize] = true;
+    } else {
+        keys[b'V' as usize] = false;
+    }
+
+    if keys[b'Q' as usize] {
+        let mut camera = CAMERA.lock().unwrap();
+        camera.look_left();
+    }
+    if keys[b'E' as usize] {
+        let mut camera = CAMERA.lock().unwrap();
+        camera.look_right();
+    }
+
 }
 
 /// Initialisierung eines Fensters
@@ -284,8 +277,12 @@ fn handle_window_events() -> bool {
 
 
 /// Dummy-Funktion: Szene aktualisieren
-fn update_scene() {
-    // Hier kann Logik zur Szenenaktualisierung hinzugefügt werden
+ fn update_scene(delta_time: f32) {
+
+    let keys = KEYS.lock().unwrap();
+    let mut camera = CAMERA.lock().unwrap();
+    camera.update_movement(delta_time, &*keys, (0.0, 0.0));
+
 }
 
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
@@ -419,10 +416,22 @@ fn main() {
             0,
         );
 
+        const UPDATE_RATE: u64 = 60; // Fixed logic updates per second
+        const TIMESTEP: f32 = 1.0 / UPDATE_RATE as f32;
+        let mut previous_time = Instant::now();
+        let mut lag = 0.0;
 
        let mut msg: MSG = std::mem::zeroed();
+        // Initialize timing
+        let mut last_frame_time = Instant::now(); // Time at the start of the frame
 
         loop {
+            let current_time = Instant::now();
+            let delta_time = (current_time - previous_time).as_secs_f32();
+            previous_time = current_time;
+
+            lag += delta_time;
+
 
             // Nachrichten abarbeiten (ohne blockieren)
             //User Input etc
@@ -433,25 +442,15 @@ fn main() {
                 TranslateMessage(&msg); // Übersetze Tastatureingaben
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
+
             handle_input();
 
-            /*
-            let current_time = Instant::now();
-            let frame_time = current_time - previous_time; // Dauer des Frames
-            previous_time = current_time;
-
-            // (2) FPS berechnen
-            let frame_time_seconds = frame_time.as_secs_f32(); // Konvertiere Frame-Dauer in Sekunden
-            let fps = 1.0 / frame_time_seconds;
-
-            // FPS ausgeben
-            println!("Frames Per Second: {:.2}", fps);
-            */
+            while lag >= TIMESTEP {
+                update_scene(TIMESTEP); // Fixed timestep logic updates
+                lag -= TIMESTEP;
+            }
 
             //let event_start = Instant::now();
-
-
-
             //let event_time = event_start.elapsed();
             //println!("Zeit für framebuffclear: {:.2?}", event_time);
 
@@ -462,7 +461,6 @@ fn main() {
                     render_scene(polygons, &mut framebuffer);
                 }
             };
-
 
             // Zeichne den Frame
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
