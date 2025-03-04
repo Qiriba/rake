@@ -26,13 +26,13 @@ use std::ffi::CString;
 use std::{ptr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use winapi::shared::windef::{HBITMAP, HDC, HWND, };
+use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
 use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
 use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, ScreenToClient, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -101,8 +101,12 @@ unsafe extern "system" fn window_proc(
     0
 }
 
-unsafe fn handle_input() {
+unsafe fn handle_input(hwnd: HWND) {
     let mut keys = KEYS.lock().unwrap();
+    let mut camera = CAMERA.lock().unwrap();
+
+    // Handle mouse movement (look around)
+    process_mouse_input(hwnd, &mut *camera);
 
     // Check key state for movement
     if GetAsyncKeyState(b'A' as i32) < 0 {
@@ -145,6 +149,26 @@ unsafe fn handle_input() {
         camera.look_right();
     }
 
+}
+unsafe fn process_mouse_input(hwnd: HWND, camera: &mut Camera) {
+    let mut cursor_pos = POINT { x: 0, y: 0 };
+
+    // Get the current cursor position in screen coordinates
+    GetCursorPos(&mut cursor_pos);
+    //ScreenToClient(hwnd, &mut cursor_pos);
+
+
+    // Get the size of the window (center point)
+    let window_center_x = crate::WINDOW_WIDTH as i32 / 2;
+    let window_center_y = crate::WINDOW_HEIGHT as i32 / 2;
+
+    // Calculate delta movement
+    let delta_x = (cursor_pos.x - window_center_x) as f32;
+    let delta_y = (cursor_pos.y - window_center_y) as f32;
+
+    camera.look_around(delta_x, delta_y);
+    // Recenter the cursor to the middle of the window
+    SetCursorPos(window_center_x, window_center_y);
 }
 
 /// Initialisierung eines Fensters
@@ -349,6 +373,20 @@ fn wait_for_next_frame(_frame_start: u64, _frame_duration: u64) {}
 fn cleanup() {
     println!("Ressourcen bereinigt.");
 }
+unsafe fn setup_mouse(hwnd: HWND) {
+    // Hide the cursor
+    ShowCursor(0);
+
+    // Confine the cursor to the window
+    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    GetClientRect(hwnd, &mut rect);
+    ClipCursor(&rect as *const RECT);
+
+    // Center the cursor in the window
+    let window_center_x = crate::WINDOW_WIDTH as i32 / 2;
+    let window_center_y = crate::WINDOW_HEIGHT as i32 / 2;
+    SetCursorPos(window_center_x, window_center_y);
+}
 
 fn main() {
     unsafe{
@@ -425,6 +463,8 @@ fn main() {
         // Initialize timing
         let mut last_frame_time = Instant::now(); // Time at the start of the frame
 
+        setup_mouse(hwnd);
+
         loop {
             let current_time = Instant::now();
             let delta_time = (current_time - previous_time).as_secs_f32();
@@ -443,7 +483,7 @@ fn main() {
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
 
-            handle_input();
+            handle_input(hwnd);
 
             while lag >= TIMESTEP {
                 update_scene(TIMESTEP); // Fixed timestep logic updates

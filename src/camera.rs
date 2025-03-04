@@ -46,12 +46,12 @@ impl Camera {
             // Movement
             velocity: Point::new(0.0, 0.0, 0.0),
             acceleration: 1.0,      // Increased movement speed
-            gravity: -9.8,
+            gravity: 80.0,
             vertical_velocity: 0.0,
             is_jumping: false,
 
             // Look
-            look_sensitivity: 0.005, // Fine-tune this
+            look_sensitivity: 0.001, // Fine-tune this
             yaw: 0.0,
             pitch: 0.0,
         }
@@ -131,18 +131,37 @@ impl Camera {
 
 
     pub fn update_forward(&mut self) {
-        // Calculate new forward direction using yaw and pitch
-        self.forward = Point::new(
-            self.yaw.cos() * self.pitch.cos(),
-            self.pitch.sin(),
-            self.yaw.sin() * self.pitch.cos(),
-        )
-            .normalize();
+        // Calculate forward vector
+        self.forward.x = self.yaw.cos() * self.pitch.cos();
+        self.forward.y = self.pitch.sin();
+        self.forward.z = self.yaw.sin() * self.pitch.cos();
+
+        // Stabilize extremely small values
+        if self.forward.x.abs() < 1e-6 {
+            self.forward.x = 0.0; // Snap small x to 0
+        }
+        if self.forward.z.abs() < 1e-6 {
+            self.forward.z = 0.0; // Snap small z to 0
+        }
+
+        // Normalize the forward vector to prevent precision drift
+        self.forward = self.forward.normalize();
+
+        // Recalculate right and up vectors for stability
+        let right = self.forward.cross(Point::new(0.0, 1.0, 0.0)).normalize();
+        self.up = right.cross(self.forward).normalize();
     }
 
+
+
     pub fn look_around(&mut self, delta_x: f32, delta_y: f32) {
+        // Skip updates if there's no input
+        if delta_x.abs() < 1e-6 && delta_y.abs() < 1e-6 {
+            return;
+        }
+
         // Adjust yaw and pitch based on mouse movement or control input
-        self.yaw += delta_x * self.look_sensitivity;
+        self.yaw -= delta_x * self.look_sensitivity;
         self.pitch += delta_y * self.look_sensitivity;
 
         // Clamp the pitch to prevent looking too far up or down
@@ -154,102 +173,105 @@ impl Camera {
 
     pub fn update_movement(&mut self, delta_time: f32, keys: &[bool; 256], mouse_delta: (f32, f32)) {
         // Constants for movement and physics
-        let sv_accelerate = 10.0;       // Ground acceleration
-        let sv_air_accelerate = 2.0;   // Air acceleration
-        let sv_gravity = 800.0;        // Gravity force (units/s²)
-        let sv_jump_speed = 300.0;     // Initial upward velocity when jumping
-        let sv_maxspeed = 320.0;       // Maximum player movement speed on the ground
-        let sv_max_air_speed = 160.0;  // Maximum player speed in the air
-        let sv_ground_friction = 6.0; // Friction applied on the ground
+        // Constants/configurations
+        let sv_maxspeed = 320.0;           // Max speed on ground
+        let sv_air_maxspeed = 950.0;      // Max speed while air strafing
+        let sv_accelerate = 5.5;          // Ground acceleration
+        let sv_air_accelerate = 12.0;     // Air strafing acceleration
+        let sv_friction = 0.6;            // Ground friction
+        let jump_strength = 27.0;        // Jump power
+        let air_drag = 0.01;              // Air drag to slow player slightly in air
+        let diagonal_speed_scale = 1.1;  // Slightly faster diagonal movement
+        let strafe_boost_factor = 0.02;  // Small boost for strafing on the ground
 
-        // Normalize movement vectors
-        let forward = self.forward.normalize();
-        let right = self.forward.cross(self.up).normalize();
-        let up = self.up.normalize();
-
+        // Get movement direction from keys (W/A/S/D)
         let mut move_dir = Point::new(0.0, 0.0, 0.0);
-
-        // Process WASD for movement
-        if keys[b'W' as usize] {
-            move_dir = move_dir - forward;
+        if keys['W' as usize] {
+            move_dir = move_dir - self.forward;
         }
-        if keys[b'S' as usize] {
-            move_dir = move_dir + forward;
+        if keys['S' as usize] {
+            move_dir =  move_dir + self.forward;
         }
-        if keys[b'D' as usize] {
-            move_dir = move_dir + right;
+        if keys['A' as usize] {
+            move_dir =  move_dir - self.forward.cross(self.up); // Left strafe
         }
-        if keys[b'A' as usize] {
-            move_dir = move_dir - right;
+        if keys['D' as usize] {
+            move_dir = move_dir + self.forward.cross(self.up); // Right strafe
         }
 
-        // Determine if we're on the ground
-        let is_on_ground = self.position.y <= 0.1;
+        // Normalize the movement direction, ignore vertical (Y) component
+        move_dir.y = 0.0; // Ensure no vertical influence on movement direction
+        move_dir = move_dir.normalize(); // Avoid NaN if direction is zero
 
-        if is_on_ground {
-            // RESET JUMP STATE
-            self.is_jumping = false;
-            self.vertical_velocity = 0.0; // Stop vertical movement upon landing
-
-            // Apply friction
-            if self.velocity.magnitude() > 0.0 {
-                let speed = self.velocity.magnitude();
-                let control = speed.min(sv_maxspeed);
-                let friction = sv_ground_friction * delta_time * control;
-
-                // Decelerate by friction, but don't reverse direction
-                self.velocity = self.velocity * (1.0 - friction / speed).max(0.0);
-            }
-
-            // Apply ground movement
+        // Ground state
+        if !self.is_jumping && self.is_on_ground() {
+            // Pre-strafe mechanics and ground acceleration
             if move_dir.magnitude() > 0.0 {
-                move_dir = move_dir.normalize();
-                let wish_vel = move_dir * sv_maxspeed;
+                // Apply ground movement
+                let wish_vel = move_dir * sv_maxspeed * diagonal_speed_scale;
                 let accel = sv_accelerate * delta_time;
-                self.velocity = self.velocity + (wish_vel - self.velocity).clamp_length(accel);
+                self.velocity = self.velocity + (wish_vel - self.velocity)* accel * delta_time;
+
+                // Add a slight boost for strafing
+                if keys['A' as usize] || keys['D' as usize] {
+                    self.velocity = self.velocity * (1.0 + (strafe_boost_factor * delta_time));
+                }
             }
 
-            // Handle jumping (if the player hits the jump key)
-            if keys[b'V' as usize] {
-                self.is_jumping = true;            // Set jumping state
-                self.vertical_velocity = sv_jump_speed; // Apply upward jump velocity
+            // Apply friction to slow down slightly when not jumping
+            if !keys['V' as usize] {
+                self.velocity = self.velocity * sv_friction;
+            } else {
+                self.is_jumping = true; // Prepare for jump
             }
+
+            // Jump mechanics
+            if keys['V' as usize] {
+                self.vertical_velocity = jump_strength; // Apply vertical velocity
+            }
+
         } else {
-            // In the air (falling or jumping)
+            // Air strafing logic
             if move_dir.magnitude() > 0.0 {
-                move_dir = move_dir.normalize();
-                let wish_vel = move_dir * sv_max_air_speed;
-                let accel = sv_air_accelerate * delta_time;
-                self.velocity = self.velocity + (wish_vel - self.velocity).clamp_length(accel);
+                let air_accel = sv_air_accelerate * delta_time;
+                let wish_vel = move_dir * sv_air_maxspeed;
+                self.velocity = self.velocity + (wish_vel - self.velocity).clamp_length(air_accel);
             }
 
-            // Apply gravity
-            self.vertical_velocity -= sv_gravity * delta_time;
+            // Apply slight air drag for balance
+            self.velocity = self.velocity * (1.0 - (air_drag * delta_time));
+
+            // Clamp speed to max air speed
+            if self.velocity.magnitude() > sv_air_maxspeed {
+                self.velocity = self.velocity.normalize() * sv_air_maxspeed;
+            }
+
+            // Apply gravity to vertical velocity
+            self.vertical_velocity -= self.gravity * delta_time;
+
+            // Update position based on velocity
+            self.position.y += self.vertical_velocity * delta_time;
+
+            // Check for landing
+            if self.position.y < 0.0 {
+                self.position.y = 0.0;
+                self.vertical_velocity = 0.0;
+                self.is_jumping = false;
+            }
         }
 
-        // Apply vertical velocity to control jumping and falling
-        self.position.y += self.vertical_velocity * delta_time;
+        // Update position based on horizontal velocity
+        self.position.x += self.velocity.x * delta_time;
+        self.position.z += self.velocity.z * delta_time;
 
-        // Clamp velocity for horizontal movement
-        if is_on_ground {
-            self.velocity = self.velocity.clamp_length(sv_maxspeed);
-        } else {
-            self.velocity = self.velocity.clamp_length(sv_max_air_speed);
-        }
 
-        // Apply horizontal velocity to position
-        self.position = self.position + self.velocity * delta_time;
+        self.look_around(mouse_delta.0, mouse_delta.1);
 
-        // Prevent falling below the ground
-        if self.position.y <= 0.0 {
-            self.position.y = 0.0;
-            self.vertical_velocity = 0.0;
-        }
-
-        // Handle camera look based on mouse input
-        //self.look_around(mouse_delta.0, mouse_delta.1);
     }
 
+    fn is_on_ground(&self) -> bool {
+        self.position.y <= 0.0
+    }
 
 
 
