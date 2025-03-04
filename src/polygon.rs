@@ -29,6 +29,10 @@ impl Polygon {
         self.tex_coords = vect;
     }
 
+    pub fn set_color(&mut self, color: u32) {
+        self.color = color;
+    }
+
     /// Add a point to the polygon.
     pub fn add_point(&mut self, point: Point) {
         self.vertices.push(point);

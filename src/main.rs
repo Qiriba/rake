@@ -292,11 +292,15 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
     let camera = CAMERA.lock().unwrap(); // Kamera-Instanz
     let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix
     let projection_matrix = camera.projection_matrix(); // Projektion
+    let camera_position = camera.position;
 
     framebuffer.clear(); // Framebuffer leeren
 
     for polygon in polygons {
         //println!("Polygon: {:?}", polygon);
+        if is_backface(polygon, camera_position) {
+            continue; // Überspringe unsichtbare Rückseiten
+        }
 
         // Projiziere jedes Polygon
         let projected_polygon = project_polygon(
@@ -309,6 +313,30 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
         framebuffer.draw_polygon(&projected_polygon, Option::from(&polygon.texture), polygon.color); // Zeichne Polygon
     }
 
+}
+fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
+    if polygon.vertices.len() < 3 {
+        return true; // Kann kein gültiges Polygon sein
+    }
+
+    // Berechne die Normale
+    let normal = calculate_normal(
+        polygon.vertices[0],
+        polygon.vertices[1],
+        polygon.vertices[2],
+    );
+
+    fn calculate_normal(p0: Point, p1: Point, p2: Point) -> Point {
+        let edge1 = p1 - p0;
+        let edge2 = p2 - p0;
+        edge1.cross(edge2).normalize()
+    }
+
+    // Definiere eine Blickrichtung
+    let view_direction = (camera_position - polygon.vertices[0]).normalize();
+
+    // Prüfe die Ausrichtung: Rückseiten werden ausgeschlossen
+    normal.dot(view_direction) < 0.0
 }
 
 
@@ -338,6 +366,7 @@ fn main() {
         let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
         let mut triangles = process_faces(&vertices, &faces);
+
         for triangle in triangles.iter_mut() {
             triangle.add_texture(texture.clone());
             triangle.set_tex_coords(vec![
@@ -443,9 +472,42 @@ fn main() {
     }
    //cleanup();
 }
+fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
+    let mut clipped_vertices = Vec::new();
+
+    for i in 0..vertices.len() {
+        let current = vertices[i];
+        let next = vertices[(i + 1) % vertices.len()];
+
+        let current_inside = current.z >= near;
+        let next_inside = next.z >= near;
+
+        // Beide Punkte innerhalb
+        if current_inside && next_inside {
+            clipped_vertices.push(next);
+        }
+        // Schnittpunkt
+        else if current_inside || next_inside {
+            let t = (near - current.z) / (next.z - current.z);
+            let intersection = Point {
+                x: current.x + t * (next.x - current.x),
+                y: current.y + t * (next.y - current.y),
+                z: near,
+            };
+
+            if current_inside {
+                clipped_vertices.push(intersection);
+            } else {
+                clipped_vertices.push(intersection);
+                clipped_vertices.push(next);
+            }
+        }
+    }
+
+    clipped_vertices
+}
 
 /// A polygon defined as a list of vertices.
-
 fn project_polygon(
     polygon: &Polygon,
     view_matrix: &Matrix4x4,
@@ -456,41 +518,54 @@ fn project_polygon(
     let mut vertices_2d: Vec<Point2D> = Vec::new();
     let mut uv_coords_2d: Vec<(f32, f32)> = Vec::new();
 
-    for (vertex, uv) in polygon.vertices.iter().zip(&polygon.tex_coords) {
-        // 1. Transformiere den Vertex in den View-Space
-        let view_transformed = view_matrix.multiply_point(vertex);
+    // Transformiere alle Punkte in den View-Space
+    let mut view_vertices: Vec<Point> = polygon
+        .vertices
+        .iter()
+        .map(|vertex| view_matrix.multiply_point(vertex))
+        .collect();
 
-        // 2. Punkt muss vor der Kamera liegen
-        if view_transformed.z > 0.0 {
-            // 3. Projiziere den Punkt in den Clip-Space
-            let projected = projection_matrix.multiply_point(&view_transformed);
+    // Clippe gegen die Near-Plane (je nach Bedarf auch Far-Plane etc.)
+    let near_plane = 0.1; // Nahe Grenze
+    view_vertices = clip_polygon_to_near_plane(&view_vertices, near_plane);
 
-            // 4. Perspektivische Division (Normalisierung)
-            let x_ndc = projected.x / projected.z;
-            let y_ndc = projected.y / projected.z;
-
-            // 5. Konvertiere in Bildschirmkoordinaten
-            let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
-            let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
-
-            // Füge den Punkt in 2D-Liste ein
-            vertices_2d.push(Point2D {
-                x: screen_x,
-                y: screen_y,
-                z: projected.z, // Behalte Tiefeninformation
-            });
-
-            // UV-Texturkoordinate unverändert weitergeben
-            uv_coords_2d.push(*uv);
-        }
+    // Prüfe, ob das Polygon noch existiert (kann nach Clipping ungültig werden)
+    if view_vertices.len() < 3 {
+        return Polygon2D {
+            vertices: vertices_2d,
+            uv_coords: uv_coords_2d,
+        };
     }
 
-    // Rückgabe des projizierten Polygons in 2D (mit UV-Koordinaten, falls vorhanden)
+    // Projiziere alle übriggebliebenen Punkte
+    for (vertex, uv) in view_vertices.iter().zip(&polygon.tex_coords) {
+        // 1. Projiziere den Punkt in den Clip-Space
+        let projected = projection_matrix.multiply_point(vertex);
+
+        // 2. Perspektivische Division
+        let x_ndc = projected.x / projected.z;
+        let y_ndc = projected.y / projected.z;
+
+        // 3. Konvertiere in Bildschirmkoordinaten
+        let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
+        let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
+
+        // Füge den Punkt in die 2D-Liste ein
+        vertices_2d.push(Point2D {
+            x: screen_x,
+            y: screen_y,
+            z: projected.z, // Tiefeninformation beibehalten
+        });
+
+        uv_coords_2d.push(*uv);
+    }
+
     Polygon2D {
         vertices: vertices_2d,
         uv_coords: uv_coords_2d,
     }
 }
+
 
 
 fn triangulate_ear_clipping(
