@@ -23,7 +23,6 @@ extern crate winapi;
 use std::cmp::{PartialEq};
 use std::ptr::{null_mut};
 use std::ffi::CString;
-use std::{ptr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
@@ -33,6 +32,7 @@ use winapi::um::wingdi::{
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
 use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, ScreenToClient, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -98,15 +98,15 @@ unsafe extern "system" fn window_proc(
 
         _ => DefWindowProcA(hwnd, msg, w_param, l_param),
     };
-    0
+
 }
 
-unsafe fn handle_input(hwnd: HWND) {
+unsafe fn handle_input() {
     let mut keys = KEYS.lock().unwrap();
     let mut camera = CAMERA.lock().unwrap();
 
     // Handle mouse movement (look around)
-    process_mouse_input(hwnd, &mut *camera);
+    process_mouse_input(&mut *camera);
 
     // Check key state for movement
     if GetAsyncKeyState(b'A' as i32) < 0 {
@@ -133,7 +133,7 @@ unsafe fn handle_input(hwnd: HWND) {
         keys[b'S' as usize] = false;
     }
 
-    // Jump input (Space)
+    // Jump input
     if GetAsyncKeyState(b'V' as i32) < 0 {
         keys[b'V' as usize] = true;
     } else {
@@ -150,23 +150,22 @@ unsafe fn handle_input(hwnd: HWND) {
     }
 
 }
-unsafe fn process_mouse_input(hwnd: HWND, camera: &mut Camera) {
+unsafe fn process_mouse_input(camera: &mut Camera) {
     let mut cursor_pos = POINT { x: 0, y: 0 };
 
     // Get the current cursor position in screen coordinates
     GetCursorPos(&mut cursor_pos);
-    //ScreenToClient(hwnd, &mut cursor_pos);
 
 
     // Get the size of the window (center point)
-    let window_center_x = crate::WINDOW_WIDTH as i32 / 2;
-    let window_center_y = crate::WINDOW_HEIGHT as i32 / 2;
+    let window_center_x = WINDOW_WIDTH as i32 / 2;
+    let window_center_y = WINDOW_HEIGHT as i32 / 2;
 
     // Calculate delta movement
     let delta_x = (cursor_pos.x - window_center_x) as f32;
     let delta_y = (cursor_pos.y - window_center_y) as f32;
 
-    camera.look_around(delta_x, delta_y);
+   camera.look_around(delta_x, delta_y);
     // Recenter the cursor to the middle of the window
     SetCursorPos(window_center_x, window_center_y);
 }
@@ -282,24 +281,6 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
 }
 
 
-/// Nachrichtenschleife und Handling
-fn handle_window_events() -> bool {
-    unsafe {
-        let mut msg: MSG = std::mem::zeroed();
-
-        while PeekMessageA(&mut msg, null_mut(), 0, 0, PM_REMOVE) != 0 {
-            if msg.message == WM_QUIT {
-                return false;
-            }
-            TranslateMessage(&msg);
-            DispatchMessageA(&msg);
-        }
-    }
-    true
-}
-
-
-
 /// Dummy-Funktion: Szene aktualisieren
  fn update_scene(delta_time: f32) {
 
@@ -361,18 +342,6 @@ fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
 }
 
 
-/// Dummy-Funktion: Aktuelle Zeit in Nanosekunden zurückgeben
-fn current_time_ns() -> u64 {
-    0
-}
-
-/// Dummy-Funktion: Warte für Framerate-Synchronisation
-fn wait_for_next_frame(_frame_start: u64, _frame_duration: u64) {}
-
-/// Dummy-Funktion: Ressourcen bereinigen
-fn cleanup() {
-    println!("Ressourcen bereinigt.");
-}
 unsafe fn setup_mouse(hwnd: HWND) {
     // Hide the cursor
     ShowCursor(0);
@@ -383,19 +352,33 @@ unsafe fn setup_mouse(hwnd: HWND) {
     ClipCursor(&rect as *const RECT);
 
     // Center the cursor in the window
-    let window_center_x = crate::WINDOW_WIDTH as i32 / 2;
-    let window_center_y = crate::WINDOW_HEIGHT as i32 / 2;
+    let window_center_x = WINDOW_WIDTH as i32 / 2;
+    let window_center_y = WINDOW_HEIGHT as i32 / 2;
     SetCursorPos(window_center_x, window_center_y);
+}
+
+unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
+    // Framebuffer Setup (Bitmap)
+    let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
+    bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
+    bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
+    bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
+    bitmap_info.bmiHeader.biPlanes = 1;
+    bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
+    bitmap_info.bmiHeader.biCompression = BI_RGB;
+    bitmap_info
 }
 
 fn main() {
     unsafe{
-        //let mut framebuffer : Vec<u32>= vec![0xFF000000; WINDOW_WIDTH * WINDOW_HEIGHT]; // Black background
+
+        let hwnd = init_window();
+
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
-        let texture = Texture::from_file(r#"C:\Users\Tobias\Pictures\4x_1.png"#);
+        let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#);
 
-        let obj_path = r#"C:\Users\Tobias\RustroverProjects\rake\example.obj"#; // Pfad zur OBJ-Datei
+        let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#; // Pfad zur OBJ-Datei
 
         // Lade die .obj-Daten
         let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
@@ -403,7 +386,7 @@ fn main() {
         let mut triangles = process_faces(&vertices, &faces);
 
         for triangle in triangles.iter_mut() {
-            triangle.add_texture(texture.clone());
+            triangle.set_texture(texture.clone());
             triangle.set_tex_coords(vec![
                 (0.0, 1.0), // unten-links
                 (1.0, 1.0), // unten-rechts
@@ -411,7 +394,7 @@ fn main() {
             ]
             );
         }
-        const FOCAL_LENGTH: f32 = 800.0;
+        println!("{:?}", &triangles.iter().len());
         POLYGONS = Some(/*vec![{
             let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
             polygon.add_point(Point::new(-1.0, -1.0, 5.0));
@@ -431,21 +414,13 @@ fn main() {
         );
 
 
-        let hwnd = init_window();
+        let bitmap_info = create_bitmap_info(&framebuffer);
 
-        // Framebuffer Setup (Bitmap)
-        let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
-        bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
-        bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
-        bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
-        bitmap_info.bmiHeader.biPlanes = 1;
-        bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
-        bitmap_info.bmiHeader.biCompression = BI_RGB;
         let window_hdc = unsafe { get_window_hdc(hwnd) };
         let hdc: HDC = CreateCompatibleDC(window_hdc);
 
         let mut pixels: *mut u32 = null_mut();
-        let hbitmap: HBITMAP = CreateDIBSection(
+        let hbitmap = CreateDIBSection(
             hdc,
             &bitmap_info,
             0,
@@ -453,15 +428,12 @@ fn main() {
             null_mut(),
             0,
         );
-
         const UPDATE_RATE: u64 = 60; // Fixed logic updates per second
         const TIMESTEP: f32 = 1.0 / UPDATE_RATE as f32;
         let mut previous_time = Instant::now();
         let mut lag = 0.0;
 
-       let mut msg: MSG = std::mem::zeroed();
-        // Initialize timing
-        let mut last_frame_time = Instant::now(); // Time at the start of the frame
+        let mut msg: MSG = std::mem::zeroed();
 
         setup_mouse(hwnd);
 
@@ -483,7 +455,7 @@ fn main() {
                 DispatchMessageW(&msg); // Nachricht verarbeiten
             }
 
-            handle_input(hwnd);
+            handle_input();
 
             while lag >= TIMESTEP {
                 update_scene(TIMESTEP); // Fixed timestep logic updates
@@ -508,7 +480,6 @@ fn main() {
         }
 
     }
-   //cleanup();
 }
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
     let mut clipped_vertices = Vec::new();

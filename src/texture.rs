@@ -1,29 +1,24 @@
-use image::{open, GenericImageView, Pixel};
+use image::{open, GenericImageView};
 
 
 #[derive(Debug, Clone)]
 pub struct Texture {
     pub width: usize,
     pub height: usize,
-    pub data: Vec<u8>, // Hier speichern wir die Pixel-Daten (z.B. RGBA-Werte).
+    pub data: Vec<u8>, // RGBA-Werte).
 }
 
 impl Texture {
-    // Beispiel: Laden einer Textur aus einer Datei
     pub fn from_file(filepath: &str) -> Self {
         // Versuche, die Datei zu öffnen
         let img = open(filepath).expect("Fehler beim Laden der Texturdatei!");
 
-        // Erhalte die Bildabmessungen
         let (width, height) = img.dimensions();
 
-        // Konvertiere die Pixel in ein RGBA8-Format
         let img = img.to_rgba8();
 
-        // Extrahiere die Pixeldaten in einen Vec<u8>
         let data = img.into_raw();
 
-        // Erstelle und gib die Textur zurück
         Texture {
             width: width as usize,
             height: height as usize,

@@ -9,8 +9,8 @@ lazy_static = "1.4"
 image = "0.25.5"
 
 [profile.release]
-opt-level = 3      # Max optimization (best performance)
+opt-level = 3      # Max optimization level
 lto = "fat"        # Link-time optimization (LTO)
-codegen-units = 1  # Forces aggressive inlining
+codegen-units = 1  # Aggressive inlining
 panic = "abort"    # No stack unwinding (smaller + faster)
 debug = false      # Remove debug symbols

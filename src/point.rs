@@ -8,8 +8,6 @@ pub struct Point {
 }
 use std::ops::{Add, Mul, Sub};
 
-
-
 impl Point {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Point { x, y , z}
@@ -24,10 +22,9 @@ impl Point {
     pub fn clamp_length(&self, max: f32) -> Point {
         let length = self.magnitude();
         if length > max {
-            // Scale the vector down to the maximum length
             return self * (max / length);
         }
-        *self // Return the original vector if clamping isn't needed
+        *self
     }
 
     pub fn normalize(self) -> Point {
@@ -48,7 +45,6 @@ impl Point {
     }
 }
 
-// Addition und Subtraktion für die Vektoroperationen
 impl Mul<f32> for &Point {
     type Output = Point;
     fn mul(self, scalar: f32) -> Point {

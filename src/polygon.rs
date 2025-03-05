@@ -5,14 +5,13 @@ use crate::texture::Texture;
 #[derive(Debug)]
 pub struct Polygon {
     pub vertices: Vec<Point>,
-    pub(crate) tex_coords: Vec<(f32, f32)>, // Texturkoordinaten für jedes Eckpunkt
+    pub(crate) tex_coords: Vec<(f32, f32)>, /// Texturkoordinaten für jeden Eckpunkt
     pub texture: Option<Texture>,
 
     pub color: u32
 }
 
 impl Polygon {
-    /// Create a new empty polygon.
     pub fn new(colorout: u32) -> Self {
         Polygon {
             vertices: Vec::new(),
@@ -22,7 +21,7 @@ impl Polygon {
         }
     }
 
-    pub fn add_texture(&mut self, texture: Texture) {
+    pub fn set_texture(&mut self, texture: Texture) {
         self.texture = Some(texture);
     }
     pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
@@ -33,7 +32,6 @@ impl Polygon {
         self.color = color;
     }
 
-    /// Add a point to the polygon.
     pub fn add_point(&mut self, point: Point) {
         self.vertices.push(point);
     }

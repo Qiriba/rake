@@ -1,5 +1,4 @@
 use std::ptr;
-use std::time::Instant;
 use crate::{point, triangulate_ear_clipping, Point2D, Polygon2D};
 use crate::texture::Texture;
 
@@ -7,8 +6,8 @@ use crate::texture::Texture;
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
-    pub pixels: Vec<u32>,  // Store the color values (e.g., 0xRRGGBBAA)
-    pub z_buffer: Vec<f32>, // Store depth values for each pixel
+    pub pixels: Vec<u32>,  // Farbwerte in 0xRRGGBBAA)
+    pub z_buffer: Vec<f32>, // Tiefenwerte für jeden pixel, index identisch mit pixels
 }
 
 impl Framebuffer {
@@ -17,10 +16,11 @@ impl Framebuffer {
             width,
             height,
             pixels: vec![0; width * height], // Schwarzes Bild
-            z_buffer: vec![f32::INFINITY; width * height], // Z-Buffer initial auf "unendlich"
+            z_buffer: vec![f32::INFINITY; width * height], // Z-Buffer initial auf unendlich um andere werte drüber zu Zeichnen
         }
     }
 
+    ///Füllt den Framebuffer mit Schwarz und Z Wert von Unendlich
     pub(crate) fn clear(&mut self) {
         unsafe {
             let pixel_ptr = self.pixels.as_mut_ptr();
@@ -37,12 +37,12 @@ impl Framebuffer {
         }
     }
 
+    ///Erstellt Dreiecke aus dem gegebenen Polygon und rasteriziert diese in den Frambuffer, mit oder ohne Textur
     pub(crate) fn draw_polygon(&mut self, polygon: &Polygon2D, texture: Option<&Texture>, color: u32) {
         if let Some(texture) = texture {
             // Texturiertes Rendering
             let triangles = triangulate_ear_clipping(polygon);
             for (v0, v1, v2) in triangles {
-                // UV-Koordinaten holen oder Dummywerte verwenden
                 let uv0 = v0.1; // Textur-UV von Vertex 0
                 let uv1 = v1.1; // Textur-UV von Vertex 1
                 let uv2 = v2.1; // Textur-UV von Vertex 2
