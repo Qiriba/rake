@@ -131,6 +131,6 @@ pub fn snap_to_pixel(point: Point2D) -> Point2D {
     Point2D {
         x: point.x.round(),
         y: point.y.round(),
-        z: point.z, // z kann unangetastet bleiben
+        z: point.z
     }
 }

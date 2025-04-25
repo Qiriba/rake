@@ -50,7 +50,7 @@ impl Polygon {
         let rotation_z_matrix = Matrix4x4::rotate_z(rotation.2);
         let scaling_matrix = Matrix4x4::scale(scale.0, scale.1, scale.2);
 
-        // Kombiniere alle Matrizen: Skalieren → Rotieren (X → Y → Z) → Verschieben
+        // Kombiniere alle Matrizen: Skalieren -> Rotieren (X -> Y -> Z) -> Verschieben
         let combined_matrix = translation_matrix
             .multiply(&rotation_z_matrix)
             .multiply(&rotation_y_matrix)

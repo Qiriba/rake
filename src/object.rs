@@ -1,14 +1,15 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use crate::Point2D;
 use crate::point::Point; // Importiere deine Punktstruktur
 
-pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<Vec<usize>>), String> {
+pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<Vec<usize>>, ), String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let reader = BufReader::new(file);
 
     let mut vertices = Vec::new();
     let mut faces = Vec::new();
-
+    let mut uv:Vec<Vec<(f32, f32)>> = Vec::new();
     for line in reader.lines() {
         let line = line.map_err(|e| format!("Failed to read line: {}", e))?.trim().to_string();
         if line.starts_with("v ") {

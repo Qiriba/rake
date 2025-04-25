@@ -31,12 +31,13 @@ use winapi::um::wingdi::{
     CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
     SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, GetMessageW, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, ScreenToClient, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
 use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
 use crate::texture::Texture;
+
+use rayon::prelude::*;
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
@@ -152,34 +153,26 @@ unsafe fn handle_input() {
 }
 unsafe fn process_mouse_input(camera: &mut Camera) {
     let mut cursor_pos = POINT { x: 0, y: 0 };
-
-    // Get the current cursor position in screen coordinates
     GetCursorPos(&mut cursor_pos);
 
-
-    // Get the size of the window (center point)
     let window_center_x = WINDOW_WIDTH as i32 / 2;
     let window_center_y = WINDOW_HEIGHT as i32 / 2;
 
-    // Calculate delta movement
     let delta_x = (cursor_pos.x - window_center_x) as f32;
     let delta_y = (cursor_pos.y - window_center_y) as f32;
 
    camera.look_around(delta_x, delta_y);
-    // Recenter the cursor to the middle of the window
+    // Cursor auf center zurücksetzen
     SetCursorPos(window_center_x, window_center_y);
 }
 
 /// Initialisierung eines Fensters
 fn init_window() -> HWND {
     unsafe {
-        // Fensterklassenname definieren
-        let class_name = CString::new("MyWindowClass").unwrap();
+        let class_name = CString::new("Rake").unwrap();
 
-        // Modul-Handle abrufen
         let h_instance = GetModuleHandleA(null_mut());
 
-        // Fensterklasse definieren und registrieren
         let wnd_class = WNDCLASSA {
             style: CS_HREDRAW | CS_VREDRAW,     // Stil (neu zeichnen bei Fensterbreiten-/Höhenänderung)
             lpfnWndProc: Some(window_proc),    // Zeiger auf die Windows-Prozedur
@@ -197,7 +190,6 @@ fn init_window() -> HWND {
             panic!("Fensterklasse konnte nicht registriert werden!");
         }
 
-        // Fenster erstellen
         let hwnd = CreateWindowExA(
             0,                                   // Keine zusätzlichen Fensterstile
             class_name.as_ptr(),                 // Klassenname
@@ -217,7 +209,6 @@ fn init_window() -> HWND {
             panic!("Fenster konnte nicht erstellt werden!");
         }
 
-        // Fenster anzeigen und aktualisieren
         ShowWindow(hwnd, SW_SHOW);
         UpdateWindow(hwnd);
 
@@ -233,28 +224,20 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
     }
 
     let hdc = winapi::um::winuser::GetDC(hwnd);
-    WINDOW_HDC = Some(hdc); // Store the HDC for future use
+    WINDOW_HDC = Some(hdc);
     hdc
 }
 
-/// Framebuffer in das Fenster zeichnen
 unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
-
-    //let event_start = Instant::now();
 
     unsafe {
         std::slice::from_raw_parts_mut(pixels, width * height)
             .copy_from_slice(&framebuffer.pixels);
     }
 
-    //let event_time = event_start.elapsed();
-    //println!("Zeit für copy from slice: {:.2?}", event_time);
-
     let old_object = SelectObject(hdc, hbitmap as *mut _);
 
-    //let event_start = Instant::now();
 
-    // Zeichne die Bitmap auf das Fenster
     BitBlt(
         window_hdc,
         0,
@@ -267,21 +250,13 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
         SRCCOPY,
     );
 
-   // let event_time = event_start.elapsed();
-    //println!("Zeit für BitBlt und window_hdc: {:.2?}", event_time);
-
-    //let event_start = Instant::now();
 
 
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
-
-    //let event_time = event_start.elapsed();
-    //println!("Zeit für Resourcenfreigabe: {:.2?}", event_time);
 }
 
 
-/// Dummy-Funktion: Szene aktualisieren
  fn update_scene(delta_time: f32) {
 
     let keys = KEYS.lock().unwrap();
@@ -291,53 +266,51 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
 }
 
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
-    let camera = CAMERA.lock().unwrap(); // Kamera-Instanz
-    let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix
-    let projection_matrix = camera.projection_matrix(); // Projektion
-    let camera_position = camera.position;
+    let camera = CAMERA.lock().unwrap();
+    let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix nach veränderter camera
+    let projection_matrix = camera.projection_matrix();
 
-    framebuffer.clear(); // Framebuffer leeren
+    framebuffer.clear(); // Framebuffer leeren damit nich sachen übermalt werden
 
-    for polygon in polygons {
-        //println!("Polygon: {:?}", polygon);
-        if is_backface(polygon, camera_position) {
-            continue; // Überspringe unsichtbare Rückseiten
-        }
+    let projected_polygons: Vec<_> = polygons
+        .par_iter()
+        .filter_map(|polygon| {
+            if is_backface(polygon, camera.position) {
+                return None;
+            }
 
-        // Projiziere jedes Polygon
-        let projected_polygon = project_polygon(
-            polygon,
-            &view_matrix,
-            &projection_matrix,
-            WINDOW_WIDTH,
-            WINDOW_HEIGHT,
-        );
-        framebuffer.draw_polygon(&projected_polygon, Option::from(&polygon.texture), polygon.color); // Zeichne Polygon
+            let projected = project_polygon(
+                polygon,
+                &view_matrix,
+                &projection_matrix,
+                WINDOW_WIDTH,
+                WINDOW_HEIGHT,
+            );
+
+            // Gib Option<&Texture> weiter, falls vorhanden
+            let texture_option = polygon.texture.as_ref();
+
+            Some((projected, texture_option, polygon.color))
+        })
+        .collect();
+
+    // Jetzt seriell ins framebuffer rendern
+    for (projected, texture, color) in projected_polygons {
+        framebuffer.draw_polygon(&projected, texture, color);
     }
-
 }
 fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     if polygon.vertices.len() < 3 {
-        return true; // Kann kein gültiges Polygon sein
+        return true; // Kann kein gültiges Polygon sein wenn weniger als 3 Ecken
     }
 
-    // Berechne die Normale
-    let normal = calculate_normal(
-        polygon.vertices[0],
-        polygon.vertices[1],
-        polygon.vertices[2],
-    );
+    let edge1 = polygon.vertices[1] - polygon.vertices[0];
+    let edge2 = polygon.vertices[2]  - polygon.vertices[0] ;
+    let normal = edge1.cross(edge2).normalize();
 
-    fn calculate_normal(p0: Point, p1: Point, p2: Point) -> Point {
-        let edge1 = p1 - p0;
-        let edge2 = p2 - p0;
-        edge1.cross(edge2).normalize()
-    }
 
-    // Definiere eine Blickrichtung
+
     let view_direction = (camera_position - polygon.vertices[0]).normalize();
-
-    // Prüfe die Ausrichtung: Rückseiten werden ausgeschlossen
     normal.dot(view_direction) < 0.0
 }
 
@@ -358,11 +331,10 @@ unsafe fn setup_mouse(hwnd: HWND) {
 }
 
 unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
-    // Framebuffer Setup (Bitmap)
     let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
     bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
     bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
-    bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe, damit Top-Down-Rendering erfolgt
+    bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe damit Top-Down-Rendering erfolgt
     bitmap_info.bmiHeader.biPlanes = 1;
     bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
     bitmap_info.bmiHeader.biCompression = BI_RGB;
@@ -371,14 +343,13 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
 
 fn main() {
     unsafe{
-
         let hwnd = init_window();
 
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
         let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#);
 
-        let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#; // Pfad zur OBJ-Datei
+        let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#;
 
         // Lade die .obj-Daten
         let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
@@ -428,7 +399,7 @@ fn main() {
             null_mut(),
             0,
         );
-        const UPDATE_RATE: u64 = 60; // Fixed logic updates per second
+        const UPDATE_RATE: u64 = 60;
         const TIMESTEP: f32 = 1.0 / UPDATE_RATE as f32;
         let mut previous_time = Instant::now();
         let mut lag = 0.0;
@@ -445,20 +416,20 @@ fn main() {
             lag += delta_time;
 
 
-            // Nachrichten abarbeiten (ohne blockieren)
+            //Nachrichten abarbeiten ohne zu blockieren
             //User Input etc
             while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) > 0 {
                 if msg.message == WM_QUIT {
-                    return; // Beendet die Nachrichtenschleife
+                    return;
                 }
-                TranslateMessage(&msg); // Übersetze Tastatureingaben
-                DispatchMessageW(&msg); // Nachricht verarbeiten
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
             }
 
             handle_input();
 
             while lag >= TIMESTEP {
-                update_scene(TIMESTEP); // Fixed timestep logic updates
+                update_scene(TIMESTEP);
                 lag -= TIMESTEP;
             }
 
@@ -474,11 +445,9 @@ fn main() {
                 }
             };
 
-            // Zeichne den Frame
+            // Zeichne den Frame in das fenster
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
-
         }
-
     }
 }
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
@@ -534,8 +503,8 @@ fn project_polygon(
         .map(|vertex| view_matrix.multiply_point(vertex))
         .collect();
 
-    // Clippe gegen die Near-Plane (je nach Bedarf auch Far-Plane etc.)
-    let near_plane = 0.1; // Nahe Grenze
+    // Clippe gegen die Near-Plane damit nicht komische obstruktionen entstehen
+    let near_plane = 0.1;
     view_vertices = clip_polygon_to_near_plane(&view_vertices, near_plane);
 
     // Prüfe, ob das Polygon noch existiert (kann nach Clipping ungültig werden)
@@ -559,11 +528,11 @@ fn project_polygon(
         let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
         let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
 
-        // Füge den Punkt in die 2D-Liste ein
+        // Füge den Punkt in die 2DVertex-Liste ein
         vertices_2d.push(Point2D {
             x: screen_x,
             y: screen_y,
-            z: projected.z, // Tiefeninformation beibehalten
+            z: projected.z, // Tiefeninformation ändern sich nicht
         });
 
         uv_coords_2d.push(*uv);
@@ -574,7 +543,6 @@ fn project_polygon(
         uv_coords: uv_coords_2d,
     }
 }
-
 
 
 fn triangulate_ear_clipping(
@@ -600,7 +568,6 @@ fn triangulate_ear_clipping(
         ];
     }
 
-    // Sicherstellen, dass das Polygon in CCW-Reihenfolge (Counter-Clockwise) vorliegt
     ensure_ccw(&mut vertices);
 
     // Starte die Triangulation
@@ -638,7 +605,7 @@ fn triangulate_ear_clipping(
         // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich
         // ungültig oder zu komplex.
         if !ear_found {
-            panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");
+            panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");                      // TODO: Panic irgendwie ersetzen mit error oder so
         }
     }
 
@@ -720,26 +687,25 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
 }
 
 fn process_faces(vertices: &Vec<Point>, faces: &Vec<Vec<usize>>) -> Vec<Polygon> {
-    let mut polygons = Vec::new();
+    faces
+        .par_iter()
+        .filter_map(|face| {
+            if face.len() < 3 {
+                return None; // Ungültiges Face überspringen
+            }
 
-    for face in faces {
-        if face.len() < 3 {
-            // Überspringe ungültige Faces
-            continue;
-        }
+            // Punkte extrahieren
+            let points: Vec<Point> = face.iter().map(|&i| vertices[i]).collect();
 
-        // Extrahiere die zugehörigen Punkte (Vertices) des Faces
-        let points: Vec<Point> = face.iter().map(|&index| vertices[index]).collect();
-        let mut polygon = Polygon::new(0xFFFFFFFF);
-        for point in &points {
-            polygon.add_point(*point);
-        }
+            // Neues Polygon erstellen
+            let mut polygon = Polygon::new(0xFFFFFFFF);
+            for point in &points {
+                polygon.add_point(*point);
+            }
 
-        // Füge die Punkte als ein neues Polygon ein
-        polygons.push(polygon);
-    }
-
-    polygons
+            Some(polygon)
+        })
+        .collect()
 }
 
 
