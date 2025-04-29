@@ -37,8 +37,8 @@ use rayon::prelude::*;
 use winit::window::Window;
 use crate::matrix4x4::Matrix4x4;
 
-const WINDOW_WIDTH: usize = 800;
-const WINDOW_HEIGHT: usize = 600;
+const WINDOW_WIDTH: f64 = 800.0;
+const WINDOW_HEIGHT: f64 = 600.0;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
 
 lazy_static! {
