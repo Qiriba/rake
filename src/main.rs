@@ -20,20 +20,24 @@ use std::cmp::{PartialEq};
 use std::{env, io};
 use std::ptr::{null_mut};
 use std::ffi::CString;
+use std::fmt::Debug;
 use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-
+use image::error::ImageFormatHint::Name;
 use winit::{
-    event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode},
+    event::{Event, WindowEvent, ElementState},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::{Key, NamedKey, PhysicalKey},
     window::WindowBuilder,
 };
 
 use lazy_static::lazy_static;
+use pixels::{Pixels, SurfaceTexture};
 use crate::texture::Texture;
 
 use rayon::prelude::*;
+use winit::error::EventLoopError;
 use winit::window::Window;
 use crate::matrix4x4::Matrix4x4;
 
@@ -57,6 +61,7 @@ lazy_static! {
     static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
 }
 
+/*
 /// Windows-Prozedur - Hier wird das Rendering gesteuert
 unsafe extern "system" fn window_proc(
     hwnd: HWND,
@@ -99,30 +104,25 @@ unsafe extern "system" fn window_proc(
     };
 
 }
+ */
 
-unsafe fn handle_input(window: &Window, event: &WindowEvent) {
+fn handle_input(window: &Window, event: &WindowEvent) {
 
     match event {
-        WindowEvent::KeyboardInput { input, .. } => {
-            if let Some(keycode) = input.virtual_keycode {
+         WindowEvent::KeyboardInput{
+             device_id: _,
+             event,
+             is_synthetic: _,
+         } => {
+            if let Key::Character(c) = &event.logical_key {
                 let mut keys = KEYS.lock().unwrap();
-                match input.state {
-                    ElementState::Pressed => {
-                        keys[keycode as usize] = true;
+                let is_pressed = event.state == ElementState::Pressed;
+                match c.as_str() {
+                    "w" | "a" | "s" | "d" => {
+                        KEYS.lock().unwrap()[c.as_bytes()[0] as usize] = is_pressed;
                     }
-                    ElementState::Released => {
-                        keys[keycode as usize] = false;
-                    }
-                }
-                match keycode {
-                    VirtualKeyCode::Q => {
-                        let mut camera = CAMERA.lock().unwrap();
-                        camera.look_left();
-                    },
-                    VirtualKeyCode::E => {
-                        let mut camera = CAMERA.lock().unwrap();
-                        camera.look_right();
-                    },
+                    "q" if is_pressed => CAMERA.lock().unwrap().look_right(),
+                    "e" if is_pressed => CAMERA.lock().unwrap().look_left(),
                     _ => (),
                 }
             }
@@ -144,16 +144,25 @@ unsafe fn handle_input(window: &Window, event: &WindowEvent) {
 }
 
 /// Initialisierung eines Fensters
-fn init_window() -> (EventLoop<()>, winit::window::Window) {
-    let event_loop = EventLoop::new();
+fn init_window() -> Result<(EventLoop<()>, Window), EventLoopError> {
+    let event_loop = EventLoop::new()?;
     let window = WindowBuilder::new()
         .with_title("Rake")
         .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-        .build(&event_loop)
-        .unwrap();
-    (event_loop, window)
+        .with_visible(true)
+        .with_position(winit::dpi::PhysicalPosition::new(100.0, 100.0))
+        .build(&event_loop)?;
+    Ok((event_loop, window))
 }
 
+fn init_rendering(window: &Window) -> Pixels {
+    let size = window.inner_size();
+    let surface_texture = SurfaceTexture::new(size.width, size.height, window);
+    let pixels = Pixels::new(size.width, size.height, surface_texture).unwrap();
+    pixels
+}
+
+/*
 static mut WINDOW_HDC: Option<HDC> = None;
 
 unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
@@ -165,8 +174,10 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
     WINDOW_HDC = Some(hdc);
     hdc
 }
+ */
 
-unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
+/*
+unsafe fn draw_frame(framebuffer: &Framebuffer, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
 
     unsafe {
         std::slice::from_raw_parts_mut(pixels, width * height)
@@ -180,8 +191,8 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
         window_hdc,
         0,
         0,
-        width as i32,
-        height as i32,
+        framebuffer.width as i32,
+        framebuffer.height as i32,
         hdc,
         0,
         0,
@@ -193,6 +204,7 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
 }
+ */
 
 
  fn update_scene(delta_time: f32) {
@@ -221,8 +233,8 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
                 polygon,
                 &view_matrix,
                 &projection_matrix,
-                WINDOW_WIDTH,
-                WINDOW_HEIGHT,
+                WINDOW_WIDTH as usize,
+                WINDOW_HEIGHT as usize,
             );
 
             // Gib Option<&Texture> weiter, falls vorhanden
@@ -252,22 +264,17 @@ fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     normal.dot(view_direction) < 0.0
 }
 
-
-unsafe fn setup_mouse(hwnd: HWND) {
+fn setup_mouse(window: &Window) {
     // Hide the cursor
-    ShowCursor(0);
-
-    // Confine the cursor to the window
-    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-    GetClientRect(hwnd, &mut rect);
-    ClipCursor(&rect as *const RECT);
+    window.set_cursor_visible(false);
 
     // Center the cursor in the window
     let window_center_x = WINDOW_WIDTH as i32 / 2;
     let window_center_y = WINDOW_HEIGHT as i32 / 2;
-    SetCursorPos(window_center_x, window_center_y);
+    window.set_cursor_position(winit::dpi::PhysicalPosition::new(window_center_x, window_center_y)).unwrap();
 }
 
+/*
 unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
     let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
     bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
@@ -278,13 +285,53 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
     bitmap_info.bmiHeader.biCompression = BI_RGB;
     bitmap_info
 }
+ */
+
+fn run_event_loop(event_loop: EventLoop<()>, window: &Window, mut pixels: Pixels, polygons: Vec<Polygon>) -> Result<(), EventLoopError> {
+    let mut last_update: Instant = Instant::now();
+
+    event_loop.run(move |event, target| {
+        target.set_control_flow(ControlFlow::Poll);
+
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => target.exit(),
+                WindowEvent::RedrawRequested => {
+
+                    // Render logic here
+                    let frame = pixels.frame_mut();
+                    for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
+                        let x = (i % 320) as u8;
+                        let y = (i / 320) as u8;
+                        pixel.copy_from_slice(&[x, y, 128, 255]); // RGBA
+                    }
+                    pixels.render().unwrap();
+                },
+                _ => handle_input(&window, &event),
+            },
+            Event::AboutToWait => {
+                // Update logic here
+
+                let now = Instant::now();
+                let delta_time = now.duration_since(last_update);
+                update_scene(delta_time.as_secs_f32());
+                last_update = now;
+
+                window.request_redraw();
+            }
+            _ => (),
+        }
+    })
+}
 
 fn main() {
     unsafe{
-        let hwnd = init_window();
+        let (event_loop, window) = init_window().unwrap();
+        let pixels = init_rendering(&window);
 
-        let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
+        pixels.render().unwrap();
 
+        /*
         // Prompt for the first file path
         print!("Enter texture path: ");
         io::stdout().flush().unwrap(); // Ensure prompt is shown
@@ -306,12 +353,12 @@ fn main() {
         // Print to confirm
         println!("First file path: {}", first_path);
         println!("Second file path: {}", second_path);
-        //let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
+         */
+        let texture_path = r#"/home/emil/Downloads/shrek-meme.jpg"#;
 
-        //let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
+        let obj_path = r#"./example.obj"#;
 
-        let texture = Texture::from_file(first_path);
-        let obj_path = second_path;
+        let texture = Texture::from_file(texture_path);
         // Lade die .obj-Daten
         let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
@@ -327,25 +374,13 @@ fn main() {
             );
         }
 
-        POLYGONS = Some(/*vec![{
-            let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
-            polygon.add_point(Point::new(-1.0, -1.0, 5.0));
-            polygon.add_point(Point::new(1.0, -1.0, 5.0));
-            polygon.add_point(Point::new(0.0, 1.0, 5.0));
-            polygon.add_texture(texture.clone());
-            polygon.set_tex_coords(vec![
-    (0.0, 1.0), // unten-links
-    (1.0, 1.0), // unten-rechts
-    (0.5, 0.0), // oben-rechts
-]
-            );
-            polygon
-        }]*/
-
-        triangles
+        let polygons = Some(
+            triangles
         );
 
+        run_event_loop(event_loop, &window, pixels, polygons.unwrap()).expect("aaaa");
 
+        /*
         let bitmap_info = create_bitmap_info(&framebuffer);
 
         let window_hdc = unsafe { get_window_hdc(hwnd) };
@@ -409,6 +444,7 @@ fn main() {
             // Zeichne den Frame in das fenster
             draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
         }
+         */
     }
 }
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
