@@ -16,7 +16,6 @@ mod matrix4x4;
 
 pub use framebuffer::Framebuffer;
 
-extern crate winapi;
 use std::cmp::{PartialEq};
 use std::{env, io};
 use std::ptr::{null_mut};
@@ -24,19 +23,18 @@ use std::ffi::CString;
 use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
-use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
-use winapi::um::wingdi::{
-    CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
-    SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+
+use winit::{
+    event::{Event, WindowEvent, KeyboardInput, ElementState, VirtualKeyCode},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
-use winapi::um::libloaderapi::GetModuleHandleA;
-use winapi::ctypes::c_int;
+
 use lazy_static::lazy_static;
 use crate::texture::Texture;
 
 use rayon::prelude::*;
+use winit::window::Window;
 use crate::matrix4x4::Matrix4x4;
 
 const WINDOW_WIDTH: usize = 800;
