@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-winit = "0.28.7"
-pixels = "0.15.0"
+winit = "0.29"
+pixels = { git = "https://github.com/parasyte/pixels", branch = "main" }
 lazy_static = "1.4"
 image = "0.25.5"
 rayon = "1.10.0"
