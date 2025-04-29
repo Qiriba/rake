@@ -21,8 +21,10 @@ pub use framebuffer::Framebuffer;
 
 extern crate winapi;
 use std::cmp::{PartialEq};
+use std::{env, io};
 use std::ptr::{null_mut};
 use std::ffi::CString;
+use std::io::Write;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
@@ -347,15 +349,38 @@ fn main() {
 
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
-        let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#);
+        // Prompt for the first file path
+        print!("Enter texture path: ");
+        io::stdout().flush().unwrap(); // Ensure prompt is shown
+        let mut first_path = String::new();
+        io::stdin()
+            .read_line(&mut first_path)
+            .expect("Failed to read input");
+        let first_path = first_path.trim(); // Remove newline
 
-        let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#;
+        // Prompt for the second file path
+        print!("Enter obj file path: ");
+        io::stdout().flush().unwrap();
+        let mut second_path = String::new();
+        io::stdin()
+            .read_line(&mut second_path)
+            .expect("Failed to read input");
+        let second_path = second_path.trim();
 
+        // Print to confirm
+        println!("First file path: {}", first_path);
+        println!("Second file path: {}", second_path);
+        //let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
+
+        //let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
+
+        let texture = Texture::from_file(first_path);
+        let obj_path = second_path;
         // Lade die .obj-Daten
         let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
         let mut triangles = process_faces(&vertices, &faces);
-
+        println!("Triangles: {:#?}", triangles.len());
         for triangle in triangles.iter_mut() {
             triangle.set_texture(texture.clone());
             triangle.set_tex_coords(vec![
@@ -365,7 +390,7 @@ fn main() {
             ]
             );
         }
-        println!("{:?}", &triangles.iter().len());
+
         POLYGONS = Some(/*vec![{
             let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
             polygon.add_point(Point::new(-1.0, -1.0, 5.0));

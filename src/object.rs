@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use crate::Point2D;
-use crate::point::Point; // Importiere deine Punktstruktur
+use crate::point::Point;
 
 pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<Vec<usize>>, ), String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;

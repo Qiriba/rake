@@ -612,7 +612,6 @@ dependencies = [
  "image",
  "lazy_static",
  "rayon",
- "smallvec",
  "winapi",
 ]
 
