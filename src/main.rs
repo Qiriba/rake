@@ -100,53 +100,33 @@ unsafe extern "system" fn window_proc(
 
 }
 
-unsafe fn handle_input() {
-    let mut keys = KEYS.lock().unwrap();
-    let mut camera = CAMERA.lock().unwrap();
+unsafe fn handle_input(window: &Window, event: &WindowEvent) {
 
-    // Handle mouse movement (look around)
-    process_mouse_input(&mut *camera);
-
-    // Check key state for movement
-    if GetAsyncKeyState(b'A' as i32) < 0 {
-        keys[b'A' as usize] = true;
-    } else {
-        keys[b'A' as usize] = false;
-    }
-
-    if GetAsyncKeyState(b'D' as i32) < 0 {
-        keys[b'D' as usize] = true;
-    } else {
-        keys[b'D' as usize] = false;
-    }
-
-    if GetAsyncKeyState(b'W' as i32) < 0 {
-        keys[b'W' as usize] = true;
-    } else {
-        keys[b'W' as usize] = false;
-    }
-
-    if GetAsyncKeyState(b'S' as i32) < 0 {
-        keys[b'S' as usize] = true;
-    } else {
-        keys[b'S' as usize] = false;
-    }
-
-    // Jump input
-    if GetAsyncKeyState(b'V' as i32) < 0 {
-        keys[b'V' as usize] = true;
-    } else {
-        keys[b'V' as usize] = false;
-    }
-
-    if keys[b'Q' as usize] {
-        let mut camera = CAMERA.lock().unwrap();
-        camera.look_left();
-    }
-    if keys[b'E' as usize] {
-        let mut camera = CAMERA.lock().unwrap();
-        camera.look_right();
-    }
+    match event {
+        WindowEvent::KeyboardInput { input, .. } => {
+            if let Some(keycode) = input.virtual_keycode {
+                let mut keys = KEYS.lock().unwrap();
+                match input.state {
+                    ElementState::Pressed => {
+                        keys[keycode as usize] = true;
+                    }
+                    ElementState::Released => {
+                        keys[keycode as usize] = false;
+                    }
+                }
+                match keycode {
+                    VirtualKeyCode::Q => {
+                        let mut camera = CAMERA.lock().unwrap();
+                        camera.look_left();
+                    },
+                    VirtualKeyCode::E => {
+                        let mut camera = CAMERA.lock().unwrap();
+                        camera.look_right();
+                    },
+                    _ => (),
+                }
+            }
+        }
 
 }
 unsafe fn process_mouse_input(camera: &mut Camera) {
