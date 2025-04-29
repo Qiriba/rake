@@ -2,10 +2,6 @@ mod point;
 pub use point::Point;
 pub use point::Point2D;
 
-
-mod matrix4x4;
-pub use matrix4x4::Matrix4x4;
-
 mod polygon;
 pub use polygon::Polygon;
 pub use polygon::Polygon2D;
@@ -16,6 +12,7 @@ pub use camera::Camera;
 mod framebuffer;
 mod texture;
 mod object;
+mod matrix4x4;
 
 pub use framebuffer::Framebuffer;
 
@@ -40,6 +37,7 @@ use lazy_static::lazy_static;
 use crate::texture::Texture;
 
 use rayon::prelude::*;
+use crate::matrix4x4::Matrix4x4;
 
 const WINDOW_WIDTH: usize = 800;
 const WINDOW_HEIGHT: usize = 600;
@@ -732,5 +730,3 @@ fn process_faces(vertices: &Vec<Point>, faces: &Vec<Vec<usize>>) -> Vec<Polygon>
         })
         .collect()
 }
-
-
