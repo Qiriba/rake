@@ -1,2 +1,2 @@
-[build]
-target = "x86_64-pc-windows-gnu" # Target architecture
+#[build]
+#target = "x86_64-pc-windows-gnu" # Target architecture
