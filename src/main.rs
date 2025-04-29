@@ -127,21 +127,20 @@ unsafe fn handle_input(window: &Window, event: &WindowEvent) {
                 }
             }
         }
+        WindowEvent::CursorMoved { position, ..} => {
+            let mut camera = CAMERA.lock().unwrap();
+            let window_center_x = WINDOW_WIDTH as i32 / 2;
+            let window_center_y = WINDOW_HEIGHT as i32 / 2;
 
-}
-unsafe fn process_mouse_input(camera: &mut Camera) {
-    let mut cursor_pos = POINT { x: 0, y: 0 };
-    GetCursorPos(&mut cursor_pos);
+            let delta_x = (position.x as i32 - window_center_x) as f32;
+            let delta_y = (position.y as i32 - window_center_y) as f32;
 
-    let window_center_x = WINDOW_WIDTH as i32 / 2;
-    let window_center_y = WINDOW_HEIGHT as i32 / 2;
-
-    let delta_x = (cursor_pos.x - window_center_x) as f32;
-    let delta_y = (cursor_pos.y - window_center_y) as f32;
-
-   camera.look_around(delta_x, delta_y);
-    // Cursor auf center zurücksetzen
-    SetCursorPos(window_center_x, window_center_y);
+            camera.look_around(delta_x, delta_y);
+            // Cursor auf center zurücksetzen
+            window.set_cursor_position(winit::dpi::PhysicalPosition::new(window_center_x, window_center_y)).unwrap();
+        }
+        _ => (),
+    }
 }
 
 /// Initialisierung eines Fensters
