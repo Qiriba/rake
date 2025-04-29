@@ -144,53 +144,14 @@ unsafe fn handle_input(window: &Window, event: &WindowEvent) {
 }
 
 /// Initialisierung eines Fensters
-fn init_window() -> HWND {
-    unsafe {
-        let class_name = CString::new("Rake").unwrap();
-
-        let h_instance = GetModuleHandleA(null_mut());
-
-        let wnd_class = WNDCLASSA {
-            style: CS_HREDRAW | CS_VREDRAW,     // Stil (neu zeichnen bei Fensterbreiten-/Höhenänderung)
-            lpfnWndProc: Some(window_proc),    // Zeiger auf die Windows-Prozedur
-            cbClsExtra: 0,                     // Keine zusätzlichen Bytes in der Fensterklasse
-            cbWndExtra: 0,                     // Keine zusätzlichen Bytes im Fenster
-            hInstance: h_instance,             // Anwendungsinstanz-Handle
-            hIcon: null_mut(),                 // Standardsymbol
-            hCursor: null_mut(),               // Standard-Cursor
-            hbrBackground: (1 + 1) as _,       // Hintergrundfarbe (Weiß)
-            lpszMenuName: null_mut(),          // Kein Menü
-            lpszClassName: class_name.as_ptr(), // Klassenname
-        };
-
-        if RegisterClassA(&wnd_class) == 0 {
-            panic!("Fensterklasse konnte nicht registriert werden!");
-        }
-
-        let hwnd = CreateWindowExA(
-            0,                                   // Keine zusätzlichen Fensterstile
-            class_name.as_ptr(),                 // Klassenname
-            CString::new("rake").unwrap().as_ptr(), // Fenstertitel
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,    // Standardfensterstil
-            CW_USEDEFAULT,                       // Standard-X-Position
-            CW_USEDEFAULT,                       // Standard-Y-Position
-            WINDOW_WIDTH as c_int,               // Fensterbreite
-            WINDOW_HEIGHT as c_int,              // Fensterhöhe
-            null_mut(),                          // Kein übergeordnetes Fenster
-            null_mut(),                          // Kein Menü
-            h_instance,                          // Anwendungsinstanz-Handle
-            null_mut(),                          // Keine zusätzlichen Anwendungen
-        );
-
-        if hwnd.is_null() {
-            panic!("Fenster konnte nicht erstellt werden!");
-        }
-
-        ShowWindow(hwnd, SW_SHOW);
-        UpdateWindow(hwnd);
-
-        hwnd
-    }
+fn init_window() -> (EventLoop<()>, winit::window::Window) {
+    let event_loop = EventLoop::new();
+    let window = WindowBuilder::new()
+        .with_title("Rake")
+        .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
+        .build(&event_loop)
+        .unwrap();
+    (event_loop, window)
 }
 
 static mut WINDOW_HDC: Option<HDC> = None;
