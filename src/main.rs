@@ -52,13 +52,13 @@ static mut POLYGONS: Option<Vec<Polygon>> = None;
 
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
-        Point::new(0.0, 0.0, -5.0),      // Startposition der Kamera
-        Point::new(0.0, 0.0, -1.0),       // Blickrichtung
-        Point::new(0.0, 1.0, 0.0),       // "Up"-Vektor
+        Point::new(0.0, 0.0, 5.0),      // Starting position
+        Point::new(0.0, 0.0, -1.0),       // View direction
+        Point::new(0.0, 1.0, 0.0),       // "Up"-vector
         60.0,                            // Field of View (FOV)
         WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
-        0.1,                             // Near-Clipping
-        100.0                            // Far-Clipping
+        0.1,                             // Near clipping
+        100.0                            // Far clipping
     ));
 }
 
@@ -524,159 +524,6 @@ fn run_test_event_loop(
 }
  */
 
-/*
-fn main1() {
-    unsafe {
-        match init_window() {
-            Ok((event_loop, window)) => {
-                let (pixels, width, height) = init_rendering(&window);
-                println!(
-                    "Window initialized successfully with size: {}x{}",
-                    width, height
-                );
-                if let Err(err) = run_test_event_loop(event_loop, &window, pixels, width, height) {
-                    println!("Error in event loop: {}", err);
-                }
-                /*
-                if let Err(e) = pixels.render() {
-                    println!("Initial render failed: {}", e);
-                    return;
-                }
-                 */
-
-                /*let polygons = Some(vec![]);
-
-                if let Err(err) = run_event_loop(
-                    event_loop,
-                    &window,
-                    pixels,
-                    width,
-                    height,
-                    polygons.unwrap(),
-                ) {
-                    println!("Error in event loop: {}", err);
-                }
-                 */
-            }
-            Err(err) => {
-                println!("Error initializing window: {}", err);
-            }
-        }
-
-        /*
-        // Prompt for the first file path
-        print!("Enter texture path: ");
-        io::stdout().flush().unwrap(); // Ensure prompt is shown
-        let mut first_path = String::new();
-        io::stdin()
-            .read_line(&mut first_path)
-            .expect("Failed to read input");
-        let first_path = first_path.trim(); // Remove newline
-
-        // Prompt for the second file path
-        print!("Enter obj file path: ");
-        io::stdout().flush().unwrap();
-        let mut second_path = String::new();
-        io::stdin()
-            .read_line(&mut second_path)
-            .expect("Failed to read input");
-        let second_path = second_path.trim();
-
-        // Print to confirm
-        println!("First file path: {}", first_path);
-        println!("Second file path: {}", second_path);
-         */
-        /*
-        let texture_path = r#"/home/emil/Downloads/shrek-meme.jpg"#;
-
-        let obj_path = r#"./example.obj"#;
-
-        let texture = Texture::from_file(texture_path);
-        // Lade die .obj-Daten
-        let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
-
-        let mut triangles = process_faces(&vertices, &faces);
-        println!("Triangles: {:#?}", triangles.len());
-        for triangle in triangles.iter_mut() {
-            triangle.set_texture(texture.clone());
-            triangle.set_tex_coords(vec![
-                (0.0, 1.0), // unten-links
-                (1.0, 1.0), // unten-rechts
-                (0.5, 0.0), // oben-rechts
-            ]
-            );
-        }
-         */
-
-        /*
-        let bitmap_info = create_bitmap_info(&framebuffer);
-
-        let window_hdc = unsafe { get_window_hdc(hwnd) };
-        let hdc: HDC = CreateCompatibleDC(window_hdc);
-
-        let mut pixels: *mut u32 = null_mut();
-        let hbitmap = CreateDIBSection(
-            hdc,
-            &bitmap_info,
-            0,
-            &mut pixels as *mut *mut u32 as *mut *mut _,
-            null_mut(),
-            0,
-        );
-        const UPDATE_RATE: u64 = 60;
-        const TIMESTEP: f32 = 1.0 / UPDATE_RATE as f32;
-        let mut previous_time = Instant::now();
-        let mut lag = 0.0;
-
-        let mut msg: MSG = std::mem::zeroed();
-
-        setup_mouse(hwnd);
-
-        loop {
-            let current_time = Instant::now();
-            let delta_time = (current_time - previous_time).as_secs_f32();
-            previous_time = current_time;
-
-            lag += delta_time;
-
-
-            //Nachrichten abarbeiten ohne zu blockieren
-            //User Input etc
-            while PeekMessageW(&mut msg, null_mut(), 0, 0, PM_REMOVE) > 0 {
-                if msg.message == WM_QUIT {
-                    return;
-                }
-                TranslateMessage(&msg);
-                DispatchMessageW(&msg);
-            }
-
-            handle_input();
-
-            while lag >= TIMESTEP {
-                update_scene(TIMESTEP);
-                lag -= TIMESTEP;
-            }
-
-            //let event_start = Instant::now();
-            //let event_time = event_start.elapsed();
-            //println!("Zeit für framebuffclear: {:.2?}", event_time);
-
-
-            // Zeichne alle Polygone in den framebuffer
-            unsafe {
-                if let Some(ref polygons) = POLYGONS {
-                    render_scene(polygons, &mut framebuffer);
-                }
-            };
-
-            // Zeichne den Frame in das fenster
-            draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
-        }
-         */
-    }
-}
- */
-
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -701,14 +548,23 @@ fn main() -> Result<(), String> {
 
     let frame_duration = Duration::from_secs_f32(1.0 / TARGET_FPS);
     let mut last_update = Instant::now();
-    let mut color: u8 = 0;
 
     let mut width = INITIAL_WIDTH;
     let mut height = INITIAL_HEIGHT;
 
+    let polygons = setup_scene();
+
+    let mut mouse_captured = false;
+    sdl_context.mouse().set_relative_mouse_mode(false);
+
+    let mut skip_backfaces = true;
+
     println!("Starting SDL2 render loop");
 
     'running: loop {
+        // Mouse movement tracking
+        let mut mouse_delta = (0.0f32, 0.0f32);
+
         // Handle events
         for event in event_pump.poll_iter() {
             match event {
@@ -723,6 +579,44 @@ fn main() -> Result<(), String> {
                         println!("Window resized to: {}x{}", width, height);
                     }
                 },
+                Event::MouseMotion { xrel, yrel, .. } => {
+                    if mouse_captured {
+                        mouse_delta.0 = xrel as f32 * 1.5;
+                        mouse_delta.1 = yrel as f32 * 1.5;
+                    }
+                },
+                Event::KeyDown { keycode: Some(key), .. } => {
+                    // Update key state
+                    let mut keys = KEYS.lock().unwrap();
+                    match key {
+                        Keycode::W => keys['W' as usize] = true,
+                        Keycode::A => keys['A' as usize] = true,
+                        Keycode::S => keys['S' as usize] = true,
+                        Keycode::D => keys['D' as usize] = true,
+                        Keycode::V => keys['V' as usize] = true,
+                        Keycode::B => {
+                            skip_backfaces = !skip_backfaces;
+                            println!("Skip backfaces: {}", skip_backfaces);
+                        },
+                        Keycode::Tab => {
+                            mouse_captured = !mouse_captured;
+                            sdl_context.mouse().set_relative_mouse_mode(mouse_captured);
+                        },
+                        _ => {}
+                    }
+                },
+                Event::KeyUp { keycode: Some(key), .. } => {
+                    // Update key state
+                    let mut keys = KEYS.lock().unwrap();
+                    match key {
+                        Keycode::W => keys['W' as usize] = false,
+                        Keycode::A => keys['A' as usize] = false,
+                        Keycode::S => keys['S' as usize] = false,
+                        Keycode::D => keys['D' as usize] = false,
+                        Keycode::V => keys['V' as usize] = false,
+                        _ => {}
+                    }
+                },
                 _ => {}
             }
         }
@@ -734,28 +628,247 @@ fn main() -> Result<(), String> {
             std::thread::sleep(frame_duration - elapsed);
             continue;
         }
+
+        // Calculate delta time
+        let delta_time = now.duration_since(last_update).as_secs_f32();
         last_update = Instant::now();
 
-        // Update color
-        color = color.wrapping_add(1);
-
-        // Render gradient pattern
-        for y in 0..height {
-            for x in 0..width {
-                let r = ((x * 255) / width) as u8;
-                let g = ((y * 255) / height) as u8;
-                let b = color;
-
-                canvas.set_draw_color(Color::RGB(r, g, b));
-                canvas.draw_point(SDLPoint::new(x as i32, y as i32))?;
-            }
+        // Update camera (with mouse delta)
+        {
+            let mut camera = CAMERA.lock().unwrap();
+            let keys = KEYS.lock().unwrap();
+            camera.update_movement(delta_time, &*keys, mouse_delta);
         }
 
+        // Render the scene
+        render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+
         canvas.present();
+
     }
 
     Ok(())
 }
+
+fn setup_scene() -> Vec<Polygon> {
+    // Create a simple cube
+    let mut polygons = Vec::new();
+
+    // Create a cube centered at (0, 0, -3) instead of (0, 0, 0)
+    // This places it 2 units in front of the camera (which is at z=5)
+
+    // Front face (red)
+    let mut front = Polygon::new(0xFF0000FF);
+    front.add_point(Point::new(-1.0, -1.0, -2.0));
+    front.add_point(Point::new(1.0, -1.0, -2.0));
+    front.add_point(Point::new(1.0, 1.0, -2.0));
+    front.add_point(Point::new(-1.0, 1.0, -2.0));
+
+    // Back face (green)
+    let mut back = Polygon::new(0x00FF00FF);
+    back.add_point(Point::new(-1.0, -1.0, -4.0));
+    back.add_point(Point::new(-1.0, 1.0, -4.0));
+    back.add_point(Point::new(1.0, 1.0, -4.0));
+    back.add_point(Point::new(1.0, -1.0, -4.0));
+
+    // Add four more faces to complete the cube
+    // Right face (blue)
+    let mut right = Polygon::new(0x0000FFFF);
+    right.add_point(Point::new(1.0, -1.0, -4.0));
+    right.add_point(Point::new(1.0, 1.0, -4.0));
+    right.add_point(Point::new(1.0, 1.0, -2.0));
+    right.add_point(Point::new(1.0, -1.0, -2.0));
+
+    // Left face (yellow)
+    let mut left = Polygon::new(0xFFFF00FF);
+    left.add_point(Point::new(-1.0, -1.0, -4.0));
+    left.add_point(Point::new(-1.0, -1.0, -2.0));
+    left.add_point(Point::new(-1.0, 1.0, -2.0));
+    left.add_point(Point::new(-1.0, 1.0, -4.0));
+
+    // Top face (cyan)
+    let mut top = Polygon::new(0x00FFFFFF);
+    top.add_point(Point::new(-1.0, 1.0, -4.0));
+    top.add_point(Point::new(-1.0, 1.0, -2.0));
+    top.add_point(Point::new(1.0, 1.0, -2.0));
+    top.add_point(Point::new(1.0, 1.0, -4.0));
+
+    // Bottom face (magenta)
+    let mut bottom = Polygon::new(0xFF00FFFF);
+    bottom.add_point(Point::new(-1.0, -1.0, -4.0));
+    bottom.add_point(Point::new(1.0, -1.0, -4.0));
+    bottom.add_point(Point::new(1.0, -1.0, -2.0));
+    bottom.add_point(Point::new(-1.0, -1.0, -2.0));
+
+    // Add the polygons to the vector
+    polygons.push(front);
+    polygons.push(back);
+    polygons.push(right);
+    polygons.push(left);
+    polygons.push(top);
+    polygons.push(bottom);
+
+    // Return the created polygons
+    polygons
+}
+
+fn render_scene_sdl2(
+    polygons: &[Polygon],
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    width: u32,
+    height: u32,
+    skip_backfaces: bool
+) -> Result<(), String> {
+    // Get the camera state
+    let camera = CAMERA.lock().unwrap();
+    let view_matrix = camera.view_matrix();
+    let projection_matrix = camera.projection_matrix();
+
+    println!("Camera position: {:?}, looking: {:?}", camera.position, camera.forward);
+
+    // Clear the canvas with black color
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    canvas.clear();
+
+    // Debug: Count processed polygons
+    let mut visible_polygons = 0;
+    let mut total_polygons = 0;
+
+    // Process each polygon
+    for polygon in polygons {
+        total_polygons += 1;
+
+        // Skip backfaces
+        if skip_backfaces && is_backface(polygon, camera.position) {
+            continue;
+        }
+
+        let view_vertices: Vec<Point> = polygon
+            .vertices
+            .iter()
+            .map(|vertex| view_matrix.multiply_point(vertex))
+            .collect();
+
+        let mut vertices_2d: Vec<Point2D> = Vec::new();
+
+        for vertex in &view_vertices {
+            // Project the point into clip space
+            let projected = projection_matrix.multiply_point(vertex);
+
+            // Skip points behind the camera (z <= 0)
+            if projected.z < 0.1 {
+                continue; // Skip vertices behind the near plane
+            }
+
+            // Perspective division
+            let x_ndc = projected.x / projected.z;
+            let y_ndc = projected.y / projected.z;
+
+            // Convert to screen coordinates
+            let screen_x = ((width as f32 / 2.0) * (1.0 + x_ndc)).round();
+            let screen_y = ((height as f32 / 2.0) * (1.0 - y_ndc)).round();
+
+            vertices_2d.push(Point2D { x: screen_x, y: screen_y, z: 0.0 });
+        }
+
+        visible_polygons += 1;
+
+        // Skip empty polygons
+        if vertices_2d.len() < 3 {
+            println!("Polygon was clipped to < 3 vertices");
+            continue;
+        }
+
+        // Debug: Print projected coordinates
+        // println!("Polygon vertices: {:?}", projected.vertices);
+
+        // Extract color from the polygon
+        let r = ((polygon.color >> 16) & 0xFF) as u8;
+        let g = ((polygon.color >> 8) & 0xFF) as u8;
+        let b = (polygon.color & 0xFF) as u8;
+        let a = ((polygon.color >> 24) & 0xFF) as u8;
+        canvas.set_draw_color(Color::RGBA(r, g, b, a));
+
+        // Draw the polygon
+        // Create an array of SDL points for drawing
+        let sdl_points: Vec<SDLPoint> = vertices_2d.iter()
+            .map(|v| SDLPoint::new(v.x as i32, v.y as i32))
+            .collect();
+
+        // Draw polygon outline
+        for i in 0..sdl_points.len() {
+            let current = sdl_points[i];
+            let next = sdl_points[(i + 1) % sdl_points.len()];
+            canvas.draw_line(current, next)?;
+
+            // Debug: Draw points with a specific color to ensure visibility
+            canvas.set_draw_color(Color::RGB(255, 255, 255));
+            canvas.draw_point(current)?;
+            canvas.set_draw_color(Color::RGBA(r, g, b, a));
+        }
+
+        // Optional: Add filled polygon rendering here once the outlines are working
+    }
+
+    println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
+
+    Ok(())
+
+}
+
+/*
+fn render_scene(polygons: &[Polygon], canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, width: u32, height: u32) -> Result<(), String> {
+    // Get the camera state
+    let camera = CAMERA.lock().unwrap();
+    let view_matrix = camera.view_matrix();
+    let projection_matrix = camera.projection_matrix();
+
+    // Clear the canvas with black color
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    canvas.clear();
+
+    // Process each polygon
+    for polygon in polygons {
+        // Skip backfaces
+        if is_backface(polygon, camera.position) {
+            continue;
+        }
+
+        // Project the polygon to 2D
+        let projected = project_polygon(
+            polygon,
+            &view_matrix,
+            &projection_matrix,
+            width as usize,
+            height as usize,
+        );
+
+        // Skip empty polygons
+        if projected.vertices.len() < 3 {
+            continue;
+        }
+
+        // Extract color from the polygon
+        let r = ((polygon.color >> 16) & 0xFF) as u8;
+        let g = ((polygon.color >> 8) & 0xFF) as u8;
+        let b = (polygon.color & 0xFF) as u8;
+        canvas.set_draw_color(Color::RGB(r, g, b));
+
+        // Draw the polygon outline
+        for i in 0..projected.vertices.len() {
+            let current = &projected.vertices[i];
+            let next = &projected.vertices[(i + 1) % projected.vertices.len()];
+
+            canvas.draw_line(
+                SDLPoint::new(current.x as i32, current.y as i32),
+                SDLPoint::new(next.x as i32, next.y as i32)
+            )?;
+        }
+    }
+
+    Ok(())
+}
+*/
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
     let mut clipped_vertices = Vec::new();
