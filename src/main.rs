@@ -593,7 +593,7 @@ fn main() -> Result<(), String> {
                         Keycode::A => keys['A' as usize] = true,
                         Keycode::S => keys['S' as usize] = true,
                         Keycode::D => keys['D' as usize] = true,
-                        Keycode::V => keys['V' as usize] = true,
+                        Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
                             println!("Skip backfaces: {}", skip_backfaces);
@@ -613,7 +613,7 @@ fn main() -> Result<(), String> {
                         Keycode::A => keys['A' as usize] = false,
                         Keycode::S => keys['S' as usize] = false,
                         Keycode::D => keys['D' as usize] = false,
-                        Keycode::V => keys['V' as usize] = false,
+                        Keycode::Space => keys['V' as usize] = false,
                         _ => {}
                     }
                 },
