@@ -224,12 +224,6 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, hbitmap: HBITMAP, pixels: *mut u
 }
  */
 
-fn update_scene(delta_time: f32) {
-    let keys = KEYS.lock().unwrap();
-    let mut camera = CAMERA.lock().unwrap();
-    camera.update_movement(delta_time, &*keys, (0.0, 0.0));
-}
-
 /*
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
     let camera = CAMERA.lock().unwrap();
@@ -310,220 +304,6 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
 }
  */
 
-/*
-fn run_event_loop(
-    event_loop: EventLoop<()>,
-    window: &Window,
-    mut pixels: Pixels,
-    mut width: u32,
-    mut height: u32,
-    polygons: Vec<Polygon>,
-) -> Result<(), EventLoopError> {
-    let mut last_update: Instant = Instant::now();
-    let frame_duration = Duration::from_secs_f32(1.0 / TARGET_FPS);
-
-    // debug tracing
-    let mut frame_counter = 0;
-    let mut last_fps_print = Instant::now();
-    let mut active_events = HashSet::new();
-
-    println!("Starting event loop with window size: {}x{}", width, height);
-
-    // Starting with the mouse NOT captured
-    window.set_cursor_visible(true);
-    window.set_cursor_grab(winit::window::CursorGrabMode::None).ok();
-
-    event_loop.run(move |event, target| {
-        match &event {
-            Event::WindowEvent { event, .. } => {
-                let event_name = format!("{:?}", event);
-                active_events.insert(event_name);
-            }
-            _ => {}
-        }
-        match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => target.exit(),
-                WindowEvent::Resized(new_size) => {
-                    println!("Window resized to: {}x{}", new_size.width, new_size.height);
-
-                    width = new_size.width;
-                    height = new_size.height;
-
-                    if width > 8192 || height > 8192 {
-                        println!("Window size too large, exiting.");
-                        target.exit();
-                        return;
-                    }
-
-                    if let Err(err) = pixels.resize_buffer(width, height)
-                    .and_then(|_| pixels.resize_surface(width, height)){
-                        println!("Resize error: {}", err);
-                        target.exit();
-                    }
-
-                }
-                WindowEvent::RedrawRequested => {
-                    frame_counter += 1;
-
-                    // render_scene(&polygons, &mut framebuffer);
-
-                    if last_fps_print.elapsed() >= Duration::from_secs(1) {
-                        println!("FPS: {}, Active events: {:?}", frame_counter, active_events);
-                        frame_counter = 0;
-                        last_fps_print = Instant::now();
-                        active_events.clear();
-                    }
-
-                    // Render logic here
-                    let current_time = Instant::now();
-                    if current_time.duration_since(last_update) >= frame_duration {
-                        let frame = pixels.frame_mut();
-                        // let frame_size = frame.len() / 4;
-                        // println!("Drawing frame with size: {} pixels", frame_size);
-                        frame.chunks_exact_mut(4)
-                            .enumerate()
-                            .take((width * height) as usize)
-                            .for_each(|(i, pixel)| {
-                            /*
-                            let color = framebuffer.pixels[i];
-                            pixels.copy_from_slice(&[
-                                ((color >> 16) & 0xFF) as u8,
-                                ((color >> 8) & 0xFF) as u8,
-                                (color & 0xFF) as u8,
-                                ((color >> 24) & 0xFF) as u8,
-                                ])};
-                            let x = (i % 320) as u8;
-                            let y = (i / 320) as u8;
-                            pixel.copy_from_slice(&[x, y, 128, 255]); // RGBA
-                             */
-                            let x = ((i % width as usize) as f32 / width as f32 * 255.0) as u8;
-                            let y = ((i / width as usize) as f32 / height as f32 * 255.0) as u8;
-                            pixel.copy_from_slice(&[x, y, 0, 255]);
-                        });
-
-                        if let Err(err) = pixels.render() {
-                            println!("Error rendering pixels: {}", err);
-                            target.exit();
-                            return;
-                        }
-                        last_update = current_time;
-                    }
-                }
-                /*
-                WindowEvent::CursorMoved { .. } => {
-                    // disabled for now
-                }
-                WindowEvent::Focused(focused) => {
-                    if focused && !mouse_captured {
-                        mouse_captured = true;
-                    }else if !focused && mouse_captured {
-                        window.set_cursor_visible(true);
-                        mouse_captured = false;
-                    }
-                }
-                 */
-                _ => {}//handle_input(&window, &event),
-            },
-            Event::AboutToWait => {
-                // Update logic here
-
-                /*
-                let now = Instant::now();
-                let delta_time = now.duration_since(last_update);
-                update_scene(delta_time.as_secs_f32());
-                last_update = now;
-                 */
-
-                /*
-                let next_frame_time = last_update + frame_duration;
-                let now = Instant::now();
-
-                if next_frame_time > now {
-                    target.set_control_flow(ControlFlow::WaitUntil(next_frame_time));
-                } else {
-                    target.set_control_flow(ControlFlow::WaitUntil(now + Duration::from_millis(1)));
-                }
-                 */
-
-                target.set_control_flow(ControlFlow::WaitUntil(
-                    Instant::now() + frame_duration,
-                ));
-
-                window.request_redraw();
-            }
-            _ => (),
-        }
-    })
-}
- */
-
-/*
-fn run_test_event_loop(
-    event_loop: EventLoop<()>,
-    window: &Window,
-    mut pixels: Pixels,
-    mut width: u32,
-    mut height: u32,
-) -> Result<(), EventLoopError> {
-    let frame_duration = Duration::from_millis(33); // ~30 FPS
-    let mut last_update = Instant::now();
-
-    // No mouse capture, no hidden cursor
-    window.set_cursor_visible(true);
-
-    // Don't use any static mutexes during the event loop
-    println!("Starting minimal test event loop");
-
-    // Simple solid color for rendering
-    let mut color: u8 = 0;
-
-    event_loop.run(move |event, target| {
-        match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => target.exit(),
-                WindowEvent::Resized(new_size) => {
-                    println!("Window resized to: {}x{}", new_size.width, new_size.height);
-                    width = new_size.width;
-                    height = new_size.height;
-                    // Simple resize without error checking for testing
-                    let _ = pixels.resize_buffer(width, height);
-                    let _ = pixels.resize_surface(width, height);
-                }
-                WindowEvent::RedrawRequested => {
-                    // Only render at fixed intervals
-                    let now = Instant::now();
-                    if now.duration_since(last_update) >= frame_duration {
-                        println!("Rendering frame at: {:?}", now.elapsed());
-
-                        // Fill with solid color that changes
-                        color = color.wrapping_add(1);
-                        let frame = pixels.frame_mut();
-                        for pixel in frame.chunks_exact_mut(4) {
-                            pixel.copy_from_slice(&[color, color, color, 255]);
-                        }
-
-                        // Simple render without error checking
-                        let _ = pixels.render();
-                        last_update = now;
-                    }
-                }
-                // Ignore all other input events completely
-                _ => {},
-            },
-            Event::AboutToWait => {
-                // Simple wait without complicated logic
-                target.set_control_flow(ControlFlow::WaitUntil(
-                    Instant::now() + Duration::from_millis(16)
-                ));
-                window.request_redraw();
-            }
-            _ => (),
-        }
-    })
-}
- */
-
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -552,7 +332,7 @@ fn main() -> Result<(), String> {
     let mut width = INITIAL_WIDTH;
     let mut height = INITIAL_HEIGHT;
 
-    let polygons = setup_scene();
+    let polygons = load_obj("./example.obj")?;
 
     let mut mouse_captured = false;
     sdl_context.mouse().set_relative_mouse_mode(false);
@@ -581,8 +361,8 @@ fn main() -> Result<(), String> {
                 },
                 Event::MouseMotion { xrel, yrel, .. } => {
                     if mouse_captured {
-                        mouse_delta.0 = xrel as f32 * 1.5;
-                        mouse_delta.1 = yrel as f32 * 1.5;
+                        mouse_delta.0 = xrel as f32 * 2.5;
+                        mouse_delta.1 = yrel as f32 * 2.5;
                     }
                 },
                 Event::KeyDown { keycode: Some(key), .. } => {
@@ -650,7 +430,113 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-fn setup_scene() -> Vec<Polygon> {
+fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
+    // Read the file to string
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read OBJ file: {}", e))?;
+
+    let mut vertices = Vec::new();
+    let mut tex_coords = Vec::new();
+    let mut normals = Vec::new();
+    let mut polygons = Vec::new();
+
+    // Default color - you might want to use a parameter later
+    let default_color = 0xFFFFFFFF;
+
+    // Parse the file line by line
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue; // Skip comments and empty lines
+        }
+
+        let mut parts = line.split_whitespace();
+        let identifier = parts.next().unwrap_or("");
+
+        match identifier {
+            "v" => {
+                // Parse vertex position (v x y z)
+                let x = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let y = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let z = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                vertices.push(Point::new(x, y, z));
+            },
+            "vt" => {
+                // Parse texture coordinates (vt u v)
+                let u = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let v = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                tex_coords.push((u, v));
+            },
+            "vn" => {
+                // Parse normals (vn x y z)
+                let nx = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let ny = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let nz = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                normals.push(Point::new(nx, ny, nz));
+            },
+            "f" => {
+                // Parse face (f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 ...)
+                let mut face_vertices = Vec::new();
+                let mut face_tex_coords = Vec::new();
+
+                for vertex_str in parts {
+                    let indices: Vec<&str> = vertex_str.split('/').collect();
+
+                    if indices.is_empty() {
+                        continue;
+                    }
+
+                    // Parse vertex index (1-based in OBJ format)
+                    if let Some(v_idx_str) = indices.get(0) {
+                        if let Ok(v_idx) = v_idx_str.parse::<usize>() {
+                            // OBJ indices start at 1, so subtract 1
+                            if v_idx > 0 && v_idx <= vertices.len() {
+                                face_vertices.push(vertices[v_idx - 1]);
+
+                                // Parse texture coordinate index if present
+                                if indices.len() > 1 && !indices[1].is_empty() {
+                                    if let Ok(vt_idx) = indices[1].parse::<usize>() {
+                                        if vt_idx > 0 && vt_idx <= tex_coords.len() {
+                                            face_tex_coords.push(tex_coords[vt_idx - 1]);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Create polygon from the face if we have at least 3 vertices
+                if face_vertices.len() >= 3 {
+                    let mut polygon = Polygon::new(default_color);
+
+                    // Add vertices to polygon
+                    for vertex in face_vertices {
+                        polygon.add_point(vertex);
+                    }
+
+                    // Add texture coordinates if available
+                    if !face_tex_coords.is_empty() {
+                        polygon.tex_coords = face_tex_coords;
+                    }
+
+                    polygons.push(polygon);
+                }
+            },
+            _ => {} // Ignore other lines
+        }
+    }
+
+    // Return the loaded polygons
+    if polygons.is_empty() {
+        Err("No valid polygons found in the OBJ file".to_string())
+    } else {
+        println!("Loaded {} vertices and {} polygons from {}", vertices.len(), polygons.len(), path);
+        Ok(polygons)
+    }
+}
+
+fn load_test_cube() -> Vec<Polygon> {
     // Create a simple cube
     let mut polygons = Vec::new();
 
@@ -724,7 +610,7 @@ fn render_scene_sdl2(
     let view_matrix = camera.view_matrix();
     let projection_matrix = camera.projection_matrix();
 
-    println!("Camera position: {:?}, looking: {:?}", camera.position, camera.forward);
+    // println!("Camera position: {:?}, looking: {:?}", camera.position, camera.forward);
 
     // Clear the canvas with black color
     canvas.set_draw_color(Color::RGB(0, 0, 0));
@@ -749,16 +635,21 @@ fn render_scene_sdl2(
             .map(|vertex| view_matrix.multiply_point(vertex))
             .collect();
 
+        // Check if the entire polygon is behind the camera
+        if view_vertices.iter().all(|v| v.z <= 0.1){
+            continue;
+        }
+
         let mut vertices_2d: Vec<Point2D> = Vec::new();
 
         for vertex in &view_vertices {
-            // Project the point into clip space
-            let projected = projection_matrix.multiply_point(vertex);
-
             // Skip points behind the camera (z <= 0)
-            if projected.z < 0.1 {
+            if vertex.z < 0.1 {
                 continue; // Skip vertices behind the near plane
             }
+
+            // Project the point into clip space
+            let projected = projection_matrix.multiply_point(vertex);
 
             // Perspective division
             let x_ndc = projected.x / projected.z;
@@ -810,65 +701,11 @@ fn render_scene_sdl2(
         // Optional: Add filled polygon rendering here once the outlines are working
     }
 
-    println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
+    // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
 
 }
-
-/*
-fn render_scene(polygons: &[Polygon], canvas: &mut sdl2::render::Canvas<sdl2::video::Window>, width: u32, height: u32) -> Result<(), String> {
-    // Get the camera state
-    let camera = CAMERA.lock().unwrap();
-    let view_matrix = camera.view_matrix();
-    let projection_matrix = camera.projection_matrix();
-
-    // Clear the canvas with black color
-    canvas.set_draw_color(Color::RGB(0, 0, 0));
-    canvas.clear();
-
-    // Process each polygon
-    for polygon in polygons {
-        // Skip backfaces
-        if is_backface(polygon, camera.position) {
-            continue;
-        }
-
-        // Project the polygon to 2D
-        let projected = project_polygon(
-            polygon,
-            &view_matrix,
-            &projection_matrix,
-            width as usize,
-            height as usize,
-        );
-
-        // Skip empty polygons
-        if projected.vertices.len() < 3 {
-            continue;
-        }
-
-        // Extract color from the polygon
-        let r = ((polygon.color >> 16) & 0xFF) as u8;
-        let g = ((polygon.color >> 8) & 0xFF) as u8;
-        let b = (polygon.color & 0xFF) as u8;
-        canvas.set_draw_color(Color::RGB(r, g, b));
-
-        // Draw the polygon outline
-        for i in 0..projected.vertices.len() {
-            let current = &projected.vertices[i];
-            let next = &projected.vertices[(i + 1) % projected.vertices.len()];
-
-            canvas.draw_line(
-                SDLPoint::new(current.x as i32, current.y as i32),
-                SDLPoint::new(next.x as i32, next.y as i32)
-            )?;
-        }
-    }
-
-    Ok(())
-}
-*/
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
     let mut clipped_vertices = Vec::new();
