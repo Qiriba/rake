@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::{Matrix4x4, Point};
 use crate::Point2D;
 use crate::texture::Texture;
@@ -6,7 +7,7 @@ use crate::texture::Texture;
 pub struct Polygon {
     pub vertices: Vec<Point>,
     pub(crate) tex_coords: Vec<(f32, f32)>, /// Texturkoordinaten für jeden Eckpunkt
-    pub texture: Option<Texture>,
+    pub texture: Option<Arc<Texture>>,
 
     pub color: u32
 }
@@ -21,10 +22,9 @@ impl Polygon {
         }
     }
 
-    pub fn set_texture(&mut self, texture: Texture) {
+    pub fn set_texture(&mut self, texture: Arc<Texture>) {
         self.texture = Some(texture);
-    }
-    pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
+    }    pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
         self.tex_coords = vect;
     }
 

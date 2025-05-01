@@ -20,20 +20,19 @@ mod object;
 pub use framebuffer::Framebuffer;
 
 extern crate winapi;
-use std::cmp::{PartialEq};
-use std::{env, io};
-use std::ptr::{null_mut};
+use std::cmp::PartialEq;
+use std::ptr::null_mut;
 use std::ffi::CString;
 use std::io::Write;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
-use winapi::shared::minwindef::{LRESULT, LPARAM, UINT, WPARAM};
+use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
 use winapi::um::wingdi::{
-    CreateCompatibleDC, CreateDIBSection, SelectObject, BitBlt,
-    SRCCOPY, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BitBlt, CreateCompatibleDC, CreateDIBSection, SelectObject,
+    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY,
 };
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageA, PeekMessageA, RegisterClassA, TranslateMessage, UpdateWindow, ShowWindow, WNDCLASSA, MSG, WM_PAINT, WM_QUIT, WS_OVERLAPPEDWINDOW, WS_VISIBLE, SW_SHOW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, PM_REMOVE, DispatchMessageW, PeekMessageW, WM_KEYDOWN, WM_KEYUP, PostQuitMessage, WM_DESTROY, GetAsyncKeyState, GetCursorPos, SetCursorPos, ShowCursor, GetClientRect, ClipCursor};
+use winapi::um::winuser::{ClipCursor, CreateWindowExA, DefWindowProcA, DispatchMessageW, GetAsyncKeyState, GetClientRect, GetCursorPos, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -290,7 +289,7 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
             );
 
             // Gib Option<&Texture> weiter, falls vorhanden
-            let texture_option = polygon.texture.as_ref();
+            let texture_option = polygon.texture.as_ref().map(|arc| arc.as_ref());
 
             Some((projected, texture_option, polygon.color))
         })
@@ -349,6 +348,7 @@ fn main() {
 
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
+        /*
         // Prompt for the first file path
         print!("Enter texture path: ");
         io::stdout().flush().unwrap(); // Ensure prompt is shown
@@ -370,25 +370,31 @@ fn main() {
         // Print to confirm
         println!("First file path: {}", first_path);
         println!("Second file path: {}", second_path);
-        //let texture = Texture::from_file(r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
-
-        //let obj_path = r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
 
         let texture = Texture::from_file(first_path);
         let obj_path = second_path;
-        // Lade die .obj-Daten
-        let (vertices, faces) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
+*/
+        let texture = Texture::from_file(r#"C:\Users\Tobias\Pictures\capsule0.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
 
-        let mut triangles = process_faces(&vertices, &faces);
+        let obj_path = r#"C:\Users\Tobias\Documents\capsule.obj\capsule.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
+
+        // Lade die .obj-Daten
+        let (vertices, faces, tex) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
+
+        let mut triangles = object::process_faces(&vertices, &faces, &tex);
+        let avg_vertices = triangles
+            .iter()
+            .map(|p| p.vertices.len())
+            .sum::<usize>() as f64
+            / triangles.len().max(1) as f64; // Avoid division by zero
+
+        println!("{}", avg_vertices);
+
         println!("Triangles: {:#?}", triangles.len());
+
+        let shared_texture = Arc::new(texture);
         for triangle in triangles.iter_mut() {
-            triangle.set_texture(texture.clone());
-            triangle.set_tex_coords(vec![
-                (0.0, 1.0), // unten-links
-                (1.0, 1.0), // unten-rechts
-                (0.5, 0.0), // oben-rechts
-            ]
-            );
+            triangle.set_texture(shared_texture.clone());
         }
 
         POLYGONS = Some(/*vec![{
@@ -576,7 +582,6 @@ fn triangulate_ear_clipping(
     let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
     let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
     let mut triangles = Vec::new();
-
     // Rechteck/Quadrat: Sonderfall – einfache Zwei-Dreiecks-Zerlegung
     if vertices.len() == 4 {
         return vec![
@@ -710,27 +715,3 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
 
     !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }
-
-fn process_faces(vertices: &Vec<Point>, faces: &Vec<Vec<usize>>) -> Vec<Polygon> {
-    faces
-        .par_iter()
-        .filter_map(|face| {
-            if face.len() < 3 {
-                return None; // Ungültiges Face überspringen
-            }
-
-            // Punkte extrahieren
-            let points: Vec<Point> = face.iter().map(|&i| vertices[i]).collect();
-
-            // Neues Polygon erstellen
-            let mut polygon = Polygon::new(0xFFFFFFFF);
-            for point in &points {
-                polygon.add_point(*point);
-            }
-
-            Some(polygon)
-        })
-        .collect()
-}
-
-
