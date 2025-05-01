@@ -3,6 +3,7 @@ use std::io::{BufRead, BufReader};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::point::Point;
 use crate::Polygon;
+use rayon::iter::IndexedParallelIterator;
 
 pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, Vec<usize>)>, Vec<(f32, f32)>), String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
@@ -46,7 +47,11 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
                 }
             }
 
-            if v_indices.len() >= 3 && t_indices.len() == v_indices.len() {
+            if v_indices.len() == 3 && t_indices.len() == 3 {
+                let mut t_indices_fixed = t_indices.clone();
+                t_indices_fixed.swap(1, 2);
+                faces.push((v_indices, t_indices_fixed));
+            } else if v_indices.len() >= 3 && t_indices.len() == v_indices.len() {
                 faces.push((v_indices, t_indices));
             }
         }
@@ -55,7 +60,11 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
     Ok((vertices, faces, tex_coords))
 }
 
-pub fn process_faces(vertices: &Vec<Point>, faces: &Vec<(Vec<usize>, Vec<usize>)>, tex_coords: &Vec<(f32, f32)>) -> Vec<Polygon> {
+pub fn process_faces(
+    vertices: &Vec<Point>,
+    faces: &Vec<(Vec<usize>, Vec<usize>)>,
+    tex_coords: &Vec<(f32, f32)>
+) -> Vec<Polygon> {
     faces
         .par_iter()
         .filter_map(|(v_indices, t_indices)| {
@@ -67,7 +76,6 @@ pub fn process_faces(vertices: &Vec<Point>, faces: &Vec<(Vec<usize>, Vec<usize>)
             let texs: Vec<(f32, f32)> = t_indices.iter().map(|&i| tex_coords[i]).collect();
 
             let mut polygon = Polygon::new(0xFFFFFFFF);
-
             for point in points {
                 polygon.add_point(point);
             }
