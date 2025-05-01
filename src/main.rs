@@ -691,14 +691,23 @@ fn main() {
         "Minimal Test - minifb",
         WIDTH,
         HEIGHT,
-        WindowOptions::default(),
+        WindowOptions {
+            borderless: false,
+            title: true,
+            resize: true,
+            scale: minifb::Scale::X1,
+            scale_mode: minifb::ScaleMode::AspectRatioStretch,
+            topmost: false,
+            transparency: false,
+            none: false,
+            ..WindowOptions::default()
+        },
     )
     .unwrap_or_else(|e| {
         panic!("Window creation failed: {}", e);
     });
 
-    // Limit to max ~60 fps
-    window.limit_update_rate(Some(Duration::from_micros(16600)));
+    window.limit_update_rate(Some(Duration::from_secs_f32(1.0 / TARGET_FPS)));
 
     let mut color: u8 = 0;
     let mut frame_count = 0;
@@ -726,7 +735,7 @@ fn main() {
         // Update the window
         window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
         frame_count += 1;
-        println!("Frame {}: OK", frame_count);
+        //println!("Frame {}: OK", frame_count);
     }
 }
 
