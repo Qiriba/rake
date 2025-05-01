@@ -682,15 +682,15 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Point as SDLPoint;
 
-const WIDTH: u32 = 320;
-const HEIGHT: u32 = 240;
+const INITIAL_WIDTH: u32 = 320;
+const INITIAL_HEIGHT: u32 = 240;
 
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
     let window = video_subsystem
-        .window("SDL2 Test", WIDTH, HEIGHT)
+        .window("rake", INITIAL_WIDTH, INITIAL_HEIGHT)
         .position_centered()
         .resizable()
         .build()
@@ -703,6 +703,9 @@ fn main() -> Result<(), String> {
     let mut last_update = Instant::now();
     let mut color: u8 = 0;
 
+    let mut width = INITIAL_WIDTH;
+    let mut height = INITIAL_HEIGHT;
+
     println!("Starting SDL2 render loop");
 
     'running: loop {
@@ -712,7 +715,14 @@ fn main() -> Result<(), String> {
                 Event::Quit { .. } |
                 Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
                     break 'running
-                }
+                },
+                Event::Window { win_event, .. } => {
+                    if let sdl2::event::WindowEvent::Resized(w, h) = win_event {
+                        width = w as u32;
+                        height = h as u32;
+                        println!("Window resized to: {}x{}", width, height);
+                    }
+                },
                 _ => {}
             }
         }
@@ -730,10 +740,10 @@ fn main() -> Result<(), String> {
         color = color.wrapping_add(1);
 
         // Render gradient pattern
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                let r = (x % 255) as u8;
-                let g = (y % 255) as u8;
+        for y in 0..height {
+            for x in 0..width {
+                let r = ((x * 255) / width) as u8;
+                let g = ((y * 255) / height) as u8;
                 let b = color;
 
                 canvas.set_draw_color(Color::RGB(r, g, b));
