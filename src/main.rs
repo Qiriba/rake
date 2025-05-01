@@ -338,6 +338,9 @@ fn main() -> Result<(), String> {
         load_test_cube()
     });
 
+    let mut mouse_captured = false;
+    sdl_context.mouse().set_relative_mouse_mode(false);
+
     let mut skip_backfaces = true;
 
     println!("Starting SDL2 render loop");
