@@ -374,9 +374,9 @@ fn main() {
         let texture = Texture::from_file(first_path);
         let obj_path = second_path;
 */
-        let texture = Texture::from_file(r#"C:\Users\Tobias\Pictures\capsule0.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
+        let texture = Texture::from_file(r#"capsule0.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
 
-        let obj_path = r#"C:\Users\Tobias\Documents\capsule.obj\capsule.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
+        let obj_path = r#"capsule.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
 
         // Lade die .obj-Daten
         let (vertices, faces, tex) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
