@@ -3,7 +3,9 @@
     <option name="buildProfileId" value="release" />
     <option name="command" value="run --package rake --bin rake" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
-    <envs />
+    <envs>
+      <env name="WGPU_BACKEND" value="gl" />
+    </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />
     <option name="requiredFeatures" value="true" />
