@@ -332,10 +332,11 @@ fn main() -> Result<(), String> {
     let mut width = INITIAL_WIDTH;
     let mut height = INITIAL_HEIGHT;
 
-    let polygons = load_obj("./example.obj")?;
-
-    let mut mouse_captured = false;
-    sdl_context.mouse().set_relative_mouse_mode(false);
+    let polygons = load_obj("./example.obj").unwrap_or_else(|e| {
+        println!("Error loading OBJ file: {}", e);
+        println!("Falling back to default cube");
+        load_test_cube()
+    });
 
     let mut skip_backfaces = true;
 
