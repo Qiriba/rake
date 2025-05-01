@@ -677,66 +677,74 @@ fn main1() {
 }
  */
 
-use minifb::{Key, Window, WindowOptions};
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
+use sdl2::rect::Point as SDLPoint;
 
-const WIDTH: usize = 320;
-const HEIGHT: usize = 240;
+const WIDTH: u32 = 320;
+const HEIGHT: u32 = 240;
 
-fn main() {
-    // Create a buffer of u32 pixels
-    let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+fn main() -> Result<(), String> {
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
 
-    // Create window
-    let mut window = Window::new(
-        "Minimal Test - minifb",
-        WIDTH,
-        HEIGHT,
-        WindowOptions {
-            borderless: false,
-            title: true,
-            resize: true,
-            scale: minifb::Scale::X1,
-            scale_mode: minifb::ScaleMode::AspectRatioStretch,
-            topmost: false,
-            transparency: false,
-            none: false,
-            ..WindowOptions::default()
-        },
-    )
-    .unwrap_or_else(|e| {
-        panic!("Window creation failed: {}", e);
-    });
+    let window = video_subsystem
+        .window("SDL2 Test", WIDTH, HEIGHT)
+        .position_centered()
+        .resizable()
+        .build()
+        .map_err(|e| e.to_string())?;
 
-    window.limit_update_rate(Some(Duration::from_secs_f32(1.0 / TARGET_FPS)));
+    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+    let mut event_pump = sdl_context.event_pump()?;
 
+    let frame_duration = Duration::from_secs_f32(1.0 / TARGET_FPS);
+    let mut last_update = Instant::now();
     let mut color: u8 = 0;
-    let mut frame_count = 0;
 
-    println!("Starting minifb render loop");
+    println!("Starting SDL2 render loop");
 
-    // Main loop
-    while window.is_open() && !window.is_key_down(Key::Escape) {
+    'running: loop {
+        // Handle events
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } |
+                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
+                    break 'running
+                }
+                _ => {}
+            }
+        }
+
+        // Limit frame rate
+        let now = Instant::now();
+        let elapsed = now.duration_since(last_update);
+        if elapsed < frame_duration {
+            std::thread::sleep(frame_duration - elapsed);
+            continue;
+        }
+        last_update = Instant::now();
+
         // Update color
         color = color.wrapping_add(1);
 
-        // Update buffer with a simple pattern
+        // Render gradient pattern
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
                 let r = (x % 255) as u8;
                 let g = (y % 255) as u8;
                 let b = color;
 
-                // Convert to u32 ARGB
-                let pixel = 0xFF << 24 | (r as u32) << 16 | (g as u32) << 8 | (b as u32);
-                buffer[y * WIDTH + x] = pixel;
+                canvas.set_draw_color(Color::RGB(r, g, b));
+                canvas.draw_point(SDLPoint::new(x as i32, y as i32))?;
             }
         }
 
-        // Update the window
-        window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
-        frame_count += 1;
-        //println!("Frame {}: OK", frame_count);
+        canvas.present();
     }
+
+    Ok(())
 }
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {

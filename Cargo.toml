@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 winit = "0.29"
-minifb = "0.25"
+sdl2 = "0.35"
 pixels = { git = "https://github.com/parasyte/pixels", branch = "main" }
 lazy_static = "1.4"
 image = "0.25.5"
