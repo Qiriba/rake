@@ -20,6 +20,12 @@ impl Framebuffer {
         }
     }
 
+    pub(crate) fn resize(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.pixels.resize(self.width * self.height, 0);
+        self.z_buffer.resize(self.width * self.height, f32::INFINITY);
+    }
     ///Füllt den Framebuffer mit Schwarz und Z Werte von Unendlich
     pub(crate) fn clear(&mut self) {
         unsafe {

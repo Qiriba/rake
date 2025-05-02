@@ -26,13 +26,10 @@ use std::ffi::CString;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
+use winapi::shared::windef::{HBITMAP, HDC, HWND, LPRECT, POINT, RECT};
 use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
-use winapi::um::wingdi::{
-    BitBlt, CreateCompatibleDC, CreateDIBSection, SelectObject,
-    BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY,
-};
-use winapi::um::winuser::{ClipCursor, CreateWindowExA, DefWindowProcA, DispatchMessageW, GetAsyncKeyState, GetClientRect, GetCursorPos, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
+use winapi::um::wingdi::{BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY};
+use winapi::um::winuser::{ClipCursor, CreateWindowExA, DefWindowProcA, DispatchMessageW, GetAsyncKeyState, GetClientRect, GetCursorPos, GetWindow, GetWindowRect, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
@@ -40,9 +37,10 @@ use crate::texture::Texture;
 
 use rayon::prelude::*;
 
-const WINDOW_WIDTH: usize = 800;
-const WINDOW_HEIGHT: usize = 600;
+static mut WINDOW_WIDTH: usize = 800;
+static mut WINDOW_HEIGHT: usize = 600;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
+
 
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
@@ -50,7 +48,7 @@ lazy_static! {
         Point::new(0.0, 0.0, -1.0),       // Blickrichtung
         Point::new(0.0, 1.0, 0.0),       // "Up"-Vektor
         60.0,                            // Field of View (FOV)
-        WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
+        16f32 / 9f32, // Seitenverhältnis
         0.1,                             // Near-Clipping
         100.0                            // Far-Clipping
     ));
@@ -230,7 +228,6 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
 }
 
 unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
-
     unsafe {
         std::slice::from_raw_parts_mut(pixels, width * height)
             .copy_from_slice(&framebuffer.pixels);
@@ -275,7 +272,7 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
 
     let projected_polygons: Vec<_> = polygons
         .par_iter()
-        .filter_map(|polygon| {
+        .filter_map(|polygon| unsafe {
             if is_backface(polygon, camera.position) {
                 return None;
             }
@@ -416,13 +413,13 @@ fn main() {
         );
 
 
-        let bitmap_info = create_bitmap_info(&framebuffer);
+        let mut bitmap_info = create_bitmap_info(&framebuffer);
 
         let window_hdc = unsafe { get_window_hdc(hwnd) };
         let hdc: HDC = CreateCompatibleDC(window_hdc);
 
         let mut pixels: *mut u32 = null_mut();
-        let hbitmap = CreateDIBSection(
+        let mut hbitmap = CreateDIBSection(
             hdc,
             &bitmap_info,
             0,
@@ -439,7 +436,47 @@ fn main() {
 
         setup_mouse(hwnd);
 
+        let mut rect: RECT = std::mem::zeroed();
+
         loop {
+            if GetWindowRect(hwnd, &mut rect) != 0 {
+                let new_width = (rect.right - rect.left) as usize;
+                let new_height = (rect.bottom - rect.top) as usize;
+
+                if new_width != WINDOW_WIDTH || new_height != WINDOW_HEIGHT {
+                    unsafe {
+                        WINDOW_WIDTH = new_width;
+                        WINDOW_HEIGHT = new_height;
+
+                        framebuffer.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+                        // Clean up the old bitmap if necessary
+                        if hbitmap != null_mut() {
+                            DeleteObject(hbitmap as _);
+                        }
+
+                        // Update bitmap info to new size
+                        bitmap_info.bmiHeader.biWidth = WINDOW_WIDTH as i32;
+                        bitmap_info.bmiHeader.biHeight = -(WINDOW_HEIGHT as i32); // negative for top-down DIB
+
+                        let mut new_pixels: *mut u32 = std::ptr::null_mut();
+                        hbitmap = CreateDIBSection(
+                            hdc,
+                            &bitmap_info,
+                            0,
+                            &mut new_pixels as *mut *mut u32 as *mut *mut _,
+                            std::ptr::null_mut(),
+                            0,
+                        );
+
+                        if hbitmap.is_null() || new_pixels.is_null() {
+                            panic!("Failed to recreate DIB section after window resize.");
+                        }
+
+                        pixels = new_pixels;
+                    }
+                }
+            }
             let current_time = Instant::now();
             let delta_time = (current_time - previous_time).as_secs_f32();
             previous_time = current_time;
@@ -477,7 +514,7 @@ fn main() {
             };
 
             // Zeichne den Frame in das fenster
-            draw_frame(&framebuffer, WINDOW_WIDTH, WINDOW_HEIGHT, hbitmap, pixels, hdc, window_hdc);
+            draw_frame(&framebuffer, framebuffer.width, framebuffer.height, hbitmap, pixels, hdc, window_hdc);
         }
     }
 }

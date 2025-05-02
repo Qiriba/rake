@@ -22,7 +22,7 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
                 .filter_map(|part| part.parse::<f32>().ok())
                 .collect();
             if coords.len() == 3 {
-                vertices.push(Point::new(coords[0], -coords[2], coords[1]));
+                vertices.push(Point::new(coords[0], coords[1], coords[2]));
             }
         } else if line.starts_with("vt ") {
             let coords: Vec<f32> = line[3..]
