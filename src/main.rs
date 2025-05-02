@@ -53,7 +53,7 @@ static mut POLYGONS: Option<Vec<Polygon>> = None;
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
         Point::new(0.0, 0.0, 5.0),      // Starting position
-        Point::new(0.0, 0.0, -1.0),       // View direction
+        Point::new(0.0, 0.0, 1.0),       // View direction
         Point::new(0.0, 1.0, 0.0),       // "Up"-vector
         60.0,                            // Field of View (FOV)
         WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
@@ -332,16 +332,21 @@ fn main() -> Result<(), String> {
     let mut width = INITIAL_WIDTH;
     let mut height = INITIAL_HEIGHT;
 
-    let polygons = load_obj("./example.obj").unwrap_or_else(|e| {
+    let mut polygons = load_test_cube(); /*load_obj("./example.obj").unwrap_or_else(|e| {
         println!("Error loading OBJ file: {}", e);
         println!("Falling back to default cube");
         load_test_cube()
-    });
+    }); */
+
+    normalize_model(&mut polygons, 2.0);
+
+    let mut bbox_polygons: Vec<Polygon> = Vec::new();
 
     let mut mouse_captured = false;
     sdl_context.mouse().set_relative_mouse_mode(false);
 
     let mut skip_backfaces = true;
+    let mut show_bbox = false;
 
     println!("Starting SDL2 render loop");
 
@@ -377,11 +382,23 @@ fn main() -> Result<(), String> {
                         Keycode::A => keys['A' as usize] = true,
                         Keycode::S => keys['S' as usize] = true,
                         Keycode::D => keys['D' as usize] = true,
+                        Keycode::Comma => {
+                            focus_camera_on_model(&polygons)
+                        }
                         Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
                             println!("Skip backfaces: {}", skip_backfaces);
                         },
+                        Keycode::P => {
+                            show_bbox = !show_bbox;
+                            if show_bbox {
+                                bbox_polygons = visualize_bounding_box(&polygons);
+                                println!("Showing bounding box");
+                            } else {
+                                println!("Hiding bounding box");
+                            }
+                        }
                         Keycode::Tab => {
                             mouse_captured = !mouse_captured;
                             sdl_context.mouse().set_relative_mouse_mode(mouse_captured);
@@ -425,7 +442,11 @@ fn main() -> Result<(), String> {
         }
 
         // Render the scene
-        render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+        if show_bbox {
+            render_scene_sdl2(&bbox_polygons, &mut canvas, width, height, skip_backfaces)?;
+        }else{
+            render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+        }
 
         canvas.present();
 
@@ -602,6 +623,55 @@ fn load_test_cube() -> Vec<Polygon> {
     polygons
 }
 
+fn normalize_model(polygons: &mut Vec<Polygon>, target_size: f32) {
+    // Find min/max bounds
+    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for polygon in polygons.iter() {
+        for vertex in &polygon.vertices {
+            min.x = min.x.min(vertex.x);
+            min.y = min.y.min(vertex.y);
+            min.z = min.z.min(vertex.z);
+
+            max.x = max.x.max(vertex.x);
+            max.y = max.y.max(vertex.y);
+            max.z = max.z.max(vertex.z);
+        }
+    }
+
+    // Calculate center and size
+    let center = Point::new(
+        (min.x + max.x) / 2.0,
+        (min.y + max.y) / 2.0,
+        (min.z + max.z) / 2.0,
+    );
+
+    let size = (max.x - min.x).max((max.y - min.y).max(max.z - min.z));
+    let scale = if size > 0.0 { target_size / size } else { 1.0 };
+
+    // Normalize each vertex
+    for polygon in polygons.iter_mut() {
+        for vertex in &mut polygon.vertices {
+            // Center the model
+            *vertex = Point::new(
+                vertex.x - center.x,
+                vertex.y - center.y,
+                vertex.z - center.z,
+            );
+
+            // Scale it to target size
+            *vertex = Point::new(
+                vertex.x * scale,
+                vertex.y * scale,
+                vertex.z * scale,
+            );
+        }
+    }
+
+    println!("Model normalized: center={:?}, scale={}", center, scale);
+}
+
 fn render_scene_sdl2(
     polygons: &[Polygon],
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
@@ -672,6 +742,19 @@ fn render_scene_sdl2(
         if vertices_2d.len() < 3 {
             println!("Polygon was clipped to < 3 vertices");
             continue;
+        } else if vertices_2d.len() == 2 {
+            // Set color for line
+            let r = ((polygon.color >> 16) & 0xFF) as u8;
+            let g = ((polygon.color >> 8) & 0xFF) as u8;
+            let b = (polygon.color & 0xFF) as u8;
+            let a = ((polygon.color >> 24) & 0xFF) as u8;
+            canvas.set_draw_color(Color::RGBA(r, g, b, a));
+
+            canvas.draw_line(
+                SDLPoint::new(vertices_2d[0].x as i32, vertices_2d[0].y as i32),
+                SDLPoint::new(vertices_2d[1].x as i32, vertices_2d[1].y as i32),
+            )?;
+            continue;
         }
 
         // Debug: Print projected coordinates
@@ -709,6 +792,110 @@ fn render_scene_sdl2(
 
     Ok(())
 
+}
+
+fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
+    // Calculate model bounds
+    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for polygon in polygons.iter() {
+        for vertex in &polygon.vertices {
+            min.x = min.x.min(vertex.x);
+            min.y = min.y.min(vertex.y);
+            min.z = min.z.min(vertex.z);
+
+            max.x = max.x.max(vertex.x);
+            max.y = max.y.max(vertex.y);
+            max.z = max.z.max(vertex.z);
+        }
+    }
+
+    // Calculate center
+    let center = Point::new(
+        (min.x + max.x) / 2.0,
+        (min.y + max.y) / 2.0,
+        (min.z + max.z) / 2.0,
+    );
+
+    let mut debug_polygons = Vec::new();
+
+    // Create a more visible marker at the center - a square/cube with 6 faces
+    let marker_size = 0.3; // Larger size to be more visible
+
+    // Add colored faces (for a cube at the center point)
+    // Front face (bright red)
+    let mut front = Polygon::new(0xFF0000FF);
+    front.add_point(Point::new(center.x - marker_size, center.y - marker_size, center.z - marker_size));
+    front.add_point(Point::new(center.x + marker_size, center.y - marker_size, center.z - marker_size));
+    front.add_point(Point::new(center.x + marker_size, center.y + marker_size, center.z - marker_size));
+    front.add_point(Point::new(center.x - marker_size, center.y + marker_size, center.z - marker_size));
+    debug_polygons.push(front);
+
+    // Add more faces of different colors
+    let mut back = Polygon::new(0x00FF00FF); // Green
+    back.add_point(Point::new(center.x - marker_size, center.y - marker_size, center.z + marker_size));
+    back.add_point(Point::new(center.x - marker_size, center.y + marker_size, center.z + marker_size));
+    back.add_point(Point::new(center.x + marker_size, center.y + marker_size, center.z + marker_size));
+    back.add_point(Point::new(center.x + marker_size, center.y - marker_size, center.z + marker_size));
+    debug_polygons.push(back);
+
+    println!("Created center marker at {:?}", center);
+    println!("Min: {:?}, Max: {:?}", min, max);
+    println!("Number of debug polygons: {}", debug_polygons.len());
+
+    debug_polygons
+}
+
+fn focus_camera_on_model(polygons: &[Polygon]) {
+    // Calculate model bounds
+    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for polygon in polygons.iter() {
+        for vertex in &polygon.vertices {
+            min.x = min.x.min(vertex.x);
+            min.y = min.y.min(vertex.y);
+            min.z = min.z.min(vertex.z);
+
+            max.x = max.x.max(vertex.x);
+            max.y = max.y.max(vertex.y);
+            max.z = max.z.max(vertex.z);
+        }
+    }
+
+    // Calculate the exact center of the model
+    let center = Point::new(
+        (min.x + max.x) / 2.0,
+        (min.y + max.y) / 2.0,
+        (min.z + max.z) / 2.0,
+    );
+
+    let mut camera = CAMERA.lock().unwrap();
+
+    // Calculate direction from camera position to model center
+    let direction = center - camera.position;
+    let direction_length = (direction.x.powi(2) + direction.y.powi(2) + direction.z.powi(2)).sqrt();
+
+    // Normalize direction
+    let direction = Point::new(
+        direction.x / direction_length,
+        direction.y / direction_length,
+        direction.z / direction_length
+    );
+
+    // Calculate pitch and yaw to look directly at model center
+    camera.pitch = (-direction.y).asin();
+    camera.yaw = (-direction.x).atan2(-direction.z);
+
+    // Update camera vectors
+    camera.update_forward();
+
+    println!("Camera rotated to view model");
+    println!("Model center: {:?}", center);
+    println!("Camera position: {:?}", camera.position);
+    println!("Looking direction: {:?}", direction);
+    println!("Camera angles: pitch={:.2}, yaw={:.2}", camera.pitch, camera.yaw);
 }
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
