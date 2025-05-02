@@ -343,9 +343,9 @@ fn main() -> Result<(), String> {
 
     // Assign texture to polygons
     // if let Some(tex) = texture {
-        for polygon in &mut polygons {
-            polygon.texture = Some(shared_texture.clone()) // Some(tex.clone());
-        }
+    for polygon in &mut polygons {
+        polygon.texture = Some(shared_texture.clone()) // Some(tex.clone());
+    }
     // }
 
     normalize_model(&mut polygons, 2.0);
@@ -355,6 +355,7 @@ fn main() -> Result<(), String> {
     let mut mouse_captured = false;
     sdl_context.mouse().set_relative_mouse_mode(false);
 
+    let mut show_texture = true;
     let mut skip_backfaces = true;
     let mut show_bbox = false;
 
@@ -396,12 +397,17 @@ fn main() -> Result<(), String> {
                         Keycode::A => keys['A' as usize] = true,
                         Keycode::S => keys['S' as usize] = true,
                         Keycode::D => keys['D' as usize] = true,
+                        Keycode::T => {
+                            show_texture = !show_texture;
+                            println!("Show texture: {}", show_texture);
+                        }
                         Keycode::Comma => focus_camera_on_model(&polygons),
                         Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
                             println!("Skip backfaces: {}", skip_backfaces);
                         }
+                        /*
                         Keycode::P => {
                             show_bbox = !show_bbox;
                             if show_bbox {
@@ -410,7 +416,7 @@ fn main() -> Result<(), String> {
                             } else {
                                 println!("Hiding bounding box");
                             }
-                        }
+                        }*/
                         Keycode::Tab => {
                             mouse_captured = !mouse_captured;
                             sdl_context.mouse().set_relative_mouse_mode(mouse_captured);
@@ -455,11 +461,11 @@ fn main() -> Result<(), String> {
             camera.update_movement(delta_time, &*keys, mouse_delta);
         }
 
-        if true {
-            render_scene_sdl2(&bbox_polygons, &mut canvas, width, height, skip_backfaces)?;
-        } else {
+        if show_texture {
             render_scene(&polygons, &mut framebuffer);
             fb_to_canvas(&framebuffer, &mut canvas).expect("Error converting framebuffer to canvas");
+        } else {
+            render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
         }
 
         // Render the scene
@@ -846,11 +852,13 @@ fn render_scene_sdl2(
         // println!("Polygon vertices: {:?}", projected.vertices);
 
         // Extract color from the polygon
+        /*
         let r = ((polygon.color >> 16) & 0xFF) as u8;
         let g = ((polygon.color >> 8) & 0xFF) as u8;
         let b = (polygon.color & 0xFF) as u8;
         let a = ((polygon.color >> 24) & 0xFF) as u8;
-        canvas.set_draw_color(Color::RGBA(r, g, b, a));
+         */
+        canvas.set_draw_color(Color::RGBA(255, 255, 255, 255));
 
         // Draw the polygon
         // Create an array of SDL points for drawing
@@ -867,13 +875,13 @@ fn render_scene_sdl2(
             // Debug: Draw points with a specific color to ensure visibility
             canvas.set_draw_color(Color::RGB(255, 255, 255));
             canvas.draw_point(current)?;
-            canvas.set_draw_color(Color::RGBA(r, g, b, a));
+            canvas.set_draw_color(Color::RGBA(255, 255, 255, 255));
         }
 
         // Optional: Add filled polygon rendering here once the outlines are working
     }
 
-    // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
+    println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
 }
