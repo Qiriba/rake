@@ -16,7 +16,6 @@ mod texture;
 
 pub use framebuffer::Framebuffer;
 
-use std::env::vars;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -45,6 +44,8 @@ fn render_scene(
     let projection_matrix = camera.projection_matrix();
 
     framebuffer.clear(); // Empty frame buffer so nothing gets overdrawn
+
+    add_directional_gradient(&camera, &polygons, framebuffer);
 
     let projected_polygons: Vec<_> = polygons
         .par_iter()
@@ -591,39 +592,165 @@ fn focus_camera_on_model(camera: &mut Camera, polygons: &[Polygon]) {
         }
     }
 
-    // Calculate the exact center of the model
+    // Calculate the center of the model
     let center = Point::new(
         (min.x + max.x) / 2.0,
         (min.y + max.y) / 2.0,
         (min.z + max.z) / 2.0,
     );
 
-    // Calculate direction from camera position to model center
+    // Calculate vector from camera to model center
     let direction = center - camera.position;
-    let direction_length = (direction.x.powi(2) + direction.y.powi(2) + direction.z.powi(2)).sqrt();
 
-    // Normalize direction
-    let direction = Point::new(
-        direction.x / direction_length,
-        direction.y / direction_length,
-        direction.z / direction_length,
+    // Check if camera is already at center
+    let length_squared = direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
+    if length_squared < 0.0001 {
+        println!("Camera already at model center, not adjusting orientation");
+        return;
+    }
+
+    // Normalize direction safely
+    let length = length_squared.sqrt();
+    let normalized = Point::new(
+        direction.x / length,
+        direction.y / length,
+        direction.z / length,
     );
 
-    // Calculate pitch and yaw to look directly at model center
-    camera.pitch = (-direction.y).asin();
-    camera.yaw = (-direction.x).atan2(-direction.z);
+    // Safely calculate pitch (with clamping to avoid domain errors)
+    let y_clamped = normalized.y.max(-0.99999).min(0.99999);
+    camera.pitch = y_clamped.asin();
+
+    // Calculate yaw safely
+    camera.yaw = normalized.z.atan2(normalized.x);
 
     // Update camera vectors
     camera.update_forward();
 
-    println!("Camera rotated to view model");
+    println!("Camera focused on model");
     println!("Model center: {:?}", center);
     println!("Camera position: {:?}", camera.position);
-    println!("Looking direction: {:?}", direction);
-    println!(
-        "Camera angles: pitch={:.2}, yaw={:.2}",
-        camera.pitch, camera.yaw
+    println!("Direction vector: {:?}", normalized);
+    println!("Camera angles: pitch={:.2}, yaw={:.2}", camera.pitch, camera.yaw);
+}
+
+fn add_directional_gradient(
+    camera: &Camera,
+    polygons: &[Polygon],
+    framebuffer: &mut Framebuffer,
+) {
+    // Calculate model center
+    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
+    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
+
+    for polygon in polygons.iter() {
+        for vertex in &polygon.vertices {
+            min.x = min.x.min(vertex.x);
+            min.y = min.y.min(vertex.y);
+            min.z = min.z.min(vertex.z);
+
+            max.x = max.x.max(vertex.x);
+            max.y = max.y.max(vertex.y);
+            max.z = max.z.max(vertex.z);
+        }
+    }
+
+    let center = Point::new(
+        (min.x + max.x) / 2.0,
+        (min.y + max.y) / 2.0,
+        (min.z + max.z) / 2.0,
     );
+
+    // Vector from camera to model center
+    let to_center = center - camera.position;
+
+    // Project onto camera's view planes
+    let right_comp = to_center.dot(camera.up.cross(camera.forward).normalize());
+    let up_comp = to_center.dot(camera.up);
+    let forward_comp = to_center.dot(camera.forward);
+
+    // Check if model is likely visible
+    if forward_comp > 0.0 {
+        let half_fov_h = (camera.fov * camera.aspect_ratio / 2.0).to_radians();
+        let half_fov_v = (camera.fov / 2.0).to_radians();
+
+        let h_angle = (right_comp / forward_comp).atan();
+        let v_angle = (up_comp / forward_comp).atan();
+
+        if h_angle.abs() < half_fov_h && v_angle.abs() < half_fov_v {
+            // Model likely visible, don't show gradient
+            return;
+        }
+    }
+
+    // Get normalized direction
+    let length = (right_comp * right_comp + up_comp * up_comp).sqrt();
+    let (dir_x, dir_y) = if length > 0.001 {
+        (right_comp / length, up_comp / length)
+    } else if forward_comp < 0.0 {
+        // Object directly behind
+        (0.0, -1.0)
+    } else {
+        return; // Shouldn't happen
+    };
+
+    // Apply gradient
+    apply_gradient(framebuffer, dir_x, dir_y);
+}
+
+fn apply_gradient(framebuffer: &mut Framebuffer, dir_x: f32, dir_y: f32) {
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+
+    // Calculate center of screen
+    let center_x = width as f32 / 2.0;
+    let center_y = height as f32 / 2.0;
+
+    // Maximum distance from center to corner
+    let max_dist = ((center_x * center_x) + (center_y * center_y)).sqrt();
+
+    // Loop through all pixels
+    for y in 0..height {
+        for x in 0..width {
+            // Calculate position relative to center
+            let rel_x = x as f32 - center_x;
+            let rel_y = y as f32 - center_y;
+
+            // Calculate dot product with direction
+            let dot = rel_x * dir_x + rel_y * dir_y;
+
+            // Normalize to range [0,1] where 1 is in the exact direction
+            let intensity = ((dot / max_dist) * 0.5 + 0.5).clamp(0.0, 1.0);
+
+            // Apply directional gradient using a red color with alpha based on intensity
+            // Only make edges more intense - center stays more transparent
+            let dist_from_center = (rel_x * rel_x + rel_y * rel_y).sqrt() / max_dist;
+            let alpha = (intensity * 150.0 * dist_from_center) as u8;
+
+            if alpha > 5 { // Only modify pixels with noticeable gradient
+                let index = y * width + x;
+                let current_color = framebuffer.pixels[index];
+
+                // Extract current color components
+                let r = ((current_color >> 16) & 0xFF) as u8;
+                let g = ((current_color >> 8) & 0xFF) as u8;
+                let b = (current_color & 0xFF) as u8;
+
+                // Blend with red gradient (0xFF0000)
+                let new_r = ((r as u16 * (255 - alpha as u16) + 255 * alpha as u16) / 255) as u8;
+                let new_g = ((g as u16 * (255 - alpha as u16)) / 255) as u8;
+                let new_b = ((b as u16 * (255 - alpha as u16)) / 255) as u8;
+
+                // Combine into new color (keeping original alpha from framebuffer)
+                let new_color = ((current_color & 0xFF000000) |
+                                 ((new_r as u32) << 16) |
+                                 ((new_g as u32) << 8) |
+                                 (new_b as u32));
+
+                framebuffer.pixels[index] = new_color;
+            }
+        }
+    }
 }
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
