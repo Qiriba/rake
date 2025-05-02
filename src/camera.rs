@@ -2,13 +2,13 @@ use crate::{point::cross_product, point::dot_product, point::normalize, Matrix4x
 
 #[derive(Debug)]
 pub struct Camera {
-    pub position: Point,         // Position der Kamera
-    pub forward: Point,          // Richtung, in die die Kamera schaut
-    pub up: Point,               // "Up"-Vektor der Kamera
-    pub fov: f32,                // Field of View (FOV), in Grad
-    pub aspect_ratio: f32,       // Breite / Höhe des Fensters
-    pub near: f32,               // Near-Clipping-Plane
-    pub far: f32,                // Far-Clipping-Plane
+    pub position: Point,         // Position of the camera
+    pub forward: Point,          // Direction the camera is facing
+    pub up: Point,               // Up vector of the camera
+    pub fov: f32,                // Field of view in degrees
+    pub aspect_ratio: f32,       // Aspect ratio of the camera
+    pub near: f32,               // Near clipping plane
+    pub far: f32,                // Far clipping plane
 
     // New fields for movement
     pub velocity: Point,         // Current velocity of the camera
@@ -61,7 +61,7 @@ impl Camera {
         self.aspect_ratio = new_ratio;
     }
 
-    // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
+    // Creating a view matrix for the camera
     pub fn view_matrix(&self) -> Matrix4x4 {
         let forward = normalize(self.forward);
         let right = normalize(cross_product(forward, self.up));
@@ -81,7 +81,7 @@ impl Camera {
         }
     }
 
-    // Funktion zur Erstellung einer Projektion-Matrix (zur 2D-Projektion)
+    // Creating a projection matrix for the camera
     pub fn projection_matrix(&self) -> Matrix4x4 {
         let fov_rad = (self.fov.to_radians() / 2.0).tan();
         Matrix4x4 {
@@ -266,7 +266,6 @@ impl Camera {
         self.position.x += self.velocity.x * delta_time;
         self.position.z += self.velocity.z * delta_time;
 
-
         self.look_around(mouse_delta.0, mouse_delta.1);
 
     }
@@ -274,7 +273,5 @@ impl Camera {
     fn is_on_ground(&self) -> bool {
         self.position.y <= 0.0
     }
-
-
 
 }

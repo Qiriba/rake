@@ -99,7 +99,7 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let mut camera = Camera::new(
-        Point::new(0.0, 0.0, 5.0),                  // Starting position
+        Point::new(5.0, 0.0, 0.0),                  // Starting position
         Point::new(0.0, 0.0, 1.0),                  // View direction
         Point::new(0.0, 1.0, 0.0),                  // "Up"-vector
         60.0,                                       // Field of View (FOV)
@@ -159,6 +159,8 @@ fn main() -> Result<(), String> {
         // Mouse movement tracking
         let mut mouse_delta = (0.0f32, 0.0f32);
 
+        camera.update_forward();
+
         // Handle events
         for event in event_pump.poll_iter() {
             match event {
@@ -215,6 +217,9 @@ fn main() -> Result<(), String> {
                         Keycode::Tab => {
                             mouse_captured = !mouse_captured;
                             sdl_context.mouse().set_relative_mouse_mode(mouse_captured);
+                            if mouse_captured {
+                                mouse_delta = (0.0f32, 0.0f32);
+                            }
                         }
                         _ => {}
                     }
