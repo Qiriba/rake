@@ -1,4 +1,4 @@
-use crate::{point::cross_product, point::dot_product, point::normalize, Matrix4x4, Point};
+use crate::{point::cross_product, point::dot_product, point::normalize, Matrix4x4, Point, TARGET_FPS};
 
 #[derive(Debug)]
 pub struct Camera {
@@ -174,7 +174,7 @@ impl Camera {
     pub fn update_movement(&mut self, delta_time: f32, keys: &[bool; 256], mouse_delta: (f32, f32)) {
         // Constants for movement and physics
         // Constants/configurations
-        let sv_maxspeed = 320.0;           // Max speed on ground
+        let sv_maxspeed = TARGET_FPS * 10.0;           // Max speed on ground
         let sv_air_maxspeed = 950.0;      // Max speed while air strafing
         let sv_accelerate = 5.5;          // Ground acceleration
         let sv_air_accelerate = 12.0;     // Air strafing acceleration
