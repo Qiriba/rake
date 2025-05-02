@@ -82,7 +82,11 @@ unsafe extern "system" fn window_proc(
             let key_code = w_param as usize;
             if key_code < 256 {
                 let mut keys = KEYS.lock().unwrap();
-                keys[key_code] = true; // Taste als gedrückt markieren
+                if key_code == b'L' as usize {
+                    keys[key_code] = !keys[key_code];
+                }else {
+                    keys[key_code] = true; // Taste als gedrückt markieren
+                }
             }
             0
         }
@@ -91,7 +95,9 @@ unsafe extern "system" fn window_proc(
             let key_code = w_param as usize;
             if key_code < 256 {
                 let mut keys = KEYS.lock().unwrap();
-                keys[key_code] = false; // Taste als losgelassen markieren
+                if !(key_code == b'L' as usize) {
+                    keys[key_code] = false; // Taste als losgelassen markieren
+                }
             }
             0
         }
@@ -105,50 +111,9 @@ unsafe fn handle_input() {
     let mut keys = KEYS.lock().unwrap();
     let mut camera = CAMERA.lock().unwrap();
 
-    // Handle mouse movement (look around)
-    process_mouse_input(&mut *camera);
-
-    // Check key state for movement
-    if GetAsyncKeyState(b'A' as i32) < 0 {
-        keys[b'A' as usize] = true;
-    } else {
-        keys[b'A' as usize] = false;
+    if !keys['L' as usize] {
+        process_mouse_input(&mut *camera);
     }
-
-    if GetAsyncKeyState(b'D' as i32) < 0 {
-        keys[b'D' as usize] = true;
-    } else {
-        keys[b'D' as usize] = false;
-    }
-
-    if GetAsyncKeyState(b'W' as i32) < 0 {
-        keys[b'W' as usize] = true;
-    } else {
-        keys[b'W' as usize] = false;
-    }
-
-    if GetAsyncKeyState(b'S' as i32) < 0 {
-        keys[b'S' as usize] = true;
-    } else {
-        keys[b'S' as usize] = false;
-    }
-
-    // Jump input
-    if GetAsyncKeyState(b'V' as i32) < 0 {
-        keys[b'V' as usize] = true;
-    } else {
-        keys[b'V' as usize] = false;
-    }
-
-    if keys[b'Q' as usize] {
-        let mut camera = CAMERA.lock().unwrap();
-        camera.look_left();
-    }
-    if keys[b'E' as usize] {
-        let mut camera = CAMERA.lock().unwrap();
-        camera.look_right();
-    }
-
 }
 unsafe fn process_mouse_input(camera: &mut Camera) {
     let mut cursor_pos = POINT { x: 0, y: 0 };
@@ -259,8 +224,9 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
 
     let keys = KEYS.lock().unwrap();
     let mut camera = CAMERA.lock().unwrap();
-    camera.update_movement(delta_time, &*keys, (0.0, 0.0));
-
+     if !keys['L' as usize] {
+         camera.update_movement(delta_time, &*keys, (0.0, 0.0));
+     }
 }
 
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
@@ -320,7 +286,6 @@ unsafe fn setup_mouse(hwnd: HWND) {
     // Confine the cursor to the window
     let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
     GetClientRect(hwnd, &mut rect);
-    ClipCursor(&rect as *const RECT);
 
     // Center the cursor in the window
     let window_center_x = WINDOW_WIDTH as i32 / 2;
