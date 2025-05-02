@@ -16,220 +16,35 @@ mod texture;
 
 pub use framebuffer::Framebuffer;
 
-use image::error::ImageFormatHint::Name;
-use std::cmp::PartialEq;
-use std::ffi::CString;
-use std::fmt::Debug;
-use std::io::Write;
-use std::ptr::null_mut;
+use std::env::vars;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use std::{env, io};
-/*
-use winit::{
-    event::{ElementState, Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    keyboard::{Key, NamedKey, PhysicalKey},
-    window::WindowBuilder,
-};
- */
 
 use crate::texture::Texture;
 use lazy_static::lazy_static;
-use pixels::wgpu::naga::SwizzleComponent::W;
-use pixels::{Pixels, PixelsBuilder, SurfaceTexture};
 
 use crate::matrix4x4::Matrix4x4;
 use rayon::prelude::*;
-use winit::error::EventLoopError;
-// use winit::window::Window;
 
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 600.0;
 pub const TARGET_FPS: f32 = 60.0;
-static mut POLYGONS: Option<Vec<Polygon>> = None;
-
-/*
-lazy_static! {
-    static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
-        Point::new(0.0, 0.0, 5.0),      // Starting position
-        Point::new(0.0, 0.0, 1.0),       // View direction
-        Point::new(0.0, 1.0, 0.0),       // "Up"-vector
-        60.0,                            // Field of View (FOV)
-        WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
-        0.1,                             // Near clipping
-        100.0                            // Far clipping
-    ));
-}
- */
 
 lazy_static! {
     static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
 }
 
-/*
-/// Windows-Prozedur - Hier wird das Rendering gesteuert
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    msg: UINT,
-    w_param: WPARAM,
-    l_param: LPARAM,
-) -> LRESULT {
-    return match msg {
-        WM_QUIT => {
-            PostQuitMessage(0);
-            0
-        }
-
-        // Wenn das Fenster zerstört wurde
-        WM_DESTROY => {
-            // Beende die Anwendung
-            PostQuitMessage(0);
-            return 0;
-        }
-
-        WM_KEYDOWN => {
-            let key_code = w_param as usize;
-            if key_code < 256 {
-                let mut keys = KEYS.lock().unwrap();
-                keys[key_code] = true; // Taste als gedrückt markieren
-            }
-            0
-        }
-
-        WM_KEYUP => {
-            let key_code = w_param as usize;
-            if key_code < 256 {
-                let mut keys = KEYS.lock().unwrap();
-                keys[key_code] = false; // Taste als losgelassen markieren
-            }
-            0
-        }
-
-        _ => DefWindowProcA(hwnd, msg, w_param, l_param),
-    };
-
-}
- */
-
-/*
-fn handle_input(window: &Window, event: &WindowEvent) {
-    match event {
-        WindowEvent::KeyboardInput {
-            device_id: _,
-            event,
-            is_synthetic: _,
-        } => {
-            if let Key::Character(c) = &event.logical_key {
-                let mut keys = KEYS.lock().unwrap();
-                let is_pressed = event.state == ElementState::Pressed;
-                match c.as_str() {
-                    "w" | "a" | "s" | "d" => {
-                        KEYS.lock().unwrap()[c.as_bytes()[0] as usize] = is_pressed;
-                    }
-                    "q" if is_pressed => CAMERA.lock().unwrap().look_right(),
-                    "e" if is_pressed => CAMERA.lock().unwrap().look_left(),
-                    _ => (),
-                }
-            }
-        }
-        WindowEvent::CursorMoved { position, .. } => {
-            let mut camera = CAMERA.lock().unwrap();
-            let window_center_x = WINDOW_WIDTH as i32 / 2;
-            let window_center_y = WINDOW_HEIGHT as i32 / 2;
-
-            let delta_x = (position.x as i32 - window_center_x) as f32;
-            let delta_y = (position.y as i32 - window_center_y) as f32;
-
-            camera.look_around(delta_x, delta_y);
-            // Cursor auf center zurücksetzen
-            window
-                .set_cursor_position(winit::dpi::PhysicalPosition::new(
-                    window_center_x,
-                    window_center_y,
-                ))
-                .unwrap();
-        }
-        _ => (),
-    }
-}
- */
-
-/// Initialisierung eines Fensters
-/*
-fn init_window() -> Result<(EventLoop<()>, Window), EventLoopError> {
-    let event_loop = EventLoop::new()?;
-    let window = WindowBuilder::new()
-        .with_title("Rake")
-        .with_inner_size(winit::dpi::LogicalSize::new(WINDOW_WIDTH, WINDOW_HEIGHT))
-        .with_visible(true)
-        .with_position(winit::dpi::PhysicalPosition::new(100.0, 100.0))
-        .with_resizable(true)
-        .build(&event_loop)?;
-    Ok((event_loop, window))
-}
-*/
-
-/*
-fn init_rendering(window: &Window) -> (Pixels, u32, u32) {
-    let size = window.inner_size();
-    let width = size.width;
-    let height = size.height;
-    let surface_texture = SurfaceTexture::new(width, height, window);
-    let pixels = Pixels::new(width, height, surface_texture).unwrap();
-    (pixels, width, height)
-}
- */
-
-/*
-static mut WINDOW_HDC: Option<HDC> = None;
-
-unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
-    if let Some(hdc) = WINDOW_HDC {
-        return hdc;
-    }
-
-    let hdc = winapi::um::winuser::GetDC(hwnd);
-    WINDOW_HDC = Some(hdc);
-    hdc
-}
- */
-
-/*
-unsafe fn draw_frame(framebuffer: &Framebuffer, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
-
-    unsafe {
-        std::slice::from_raw_parts_mut(pixels, width * height)
-            .copy_from_slice(&framebuffer.pixels);
-    }
-
-    let old_object = SelectObject(hdc, hbitmap as *mut _);
-
-
-    BitBlt(
-        window_hdc,
-        0,
-        0,
-        framebuffer.width as i32,
-        framebuffer.height as i32,
-        hdc,
-        0,
-        0,
-        SRCCOPY,
-    );
-
-
-
-    // Ressourcenfreigabe
-    SelectObject(hdc, old_object);
-}
- */
-
-fn render_scene(camera: &Camera, polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer, width: u32, height: u32) {
-    let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix nach veränderter camera
+fn render_scene(
+    camera: &Camera,
+    polygons: &Vec<Polygon>,
+    framebuffer: &mut Framebuffer,
+    width: u32,
+    height: u32,
+) {
+    let view_matrix = camera.view_matrix(); // Recalculating view matrix after camera movement
     let projection_matrix = camera.projection_matrix();
 
-    framebuffer.clear(); // Framebuffer leeren damit nich sachen übermalt werden
+    framebuffer.clear(); // Empty frame buffer so nothing gets overdrawn
 
     let projected_polygons: Vec<_> = polygons
         .par_iter()
@@ -246,14 +61,14 @@ fn render_scene(camera: &Camera, polygons: &Vec<Polygon>, framebuffer: &mut Fram
                 height as usize,
             );
 
-            // Gib Option<&Texture> weiter, falls vorhanden
+            // Passes Option<&Texture>, if exists
             let texture_option = polygon.texture.as_ref();
 
             Some((projected, texture_option, polygon.color))
         })
         .collect();
 
-    // Jetzt seriell ins framebuffer rendern
+    // Rendering frame buffer
     for (projected, texture, color) in projected_polygons {
         framebuffer.draw_polygon(&projected, texture, color);
     }
@@ -261,7 +76,7 @@ fn render_scene(camera: &Camera, polygons: &Vec<Polygon>, framebuffer: &mut Fram
 
 fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     if polygon.vertices.len() < 3 {
-        return true; // Kann kein gültiges Polygon sein wenn weniger als 3 Ecken
+        return true; // Can't be a valid polygon with less than 3 vertices
     }
 
     let edge1 = polygon.vertices[1] - polygon.vertices[0];
@@ -271,36 +86,6 @@ fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     let view_direction = (camera_position - polygon.vertices[0]).normalize();
     normal.dot(view_direction) < 0.0
 }
-
-/*
-fn setup_mouse(window: &Window) {
-    // Hide the cursor
-    window.set_cursor_visible(false);
-
-    // Center the cursor in the window
-    let window_center_x = WINDOW_WIDTH as i32 / 2;
-    let window_center_y = WINDOW_HEIGHT as i32 / 2;
-    window
-        .set_cursor_position(winit::dpi::PhysicalPosition::new(
-            window_center_x,
-            window_center_y,
-        ))
-        .unwrap();
-}
- */
-
-/*
-unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
-    let mut bitmap_info: BITMAPINFO = std::mem::zeroed();
-    bitmap_info.bmiHeader.biSize = size_of::<BITMAPINFOHEADER>() as u32;
-    bitmap_info.bmiHeader.biWidth = framebuffer.width as i32;
-    bitmap_info.bmiHeader.biHeight = -(framebuffer.height as i32); // Negative Höhe damit Top-Down-Rendering erfolgt
-    bitmap_info.bmiHeader.biPlanes = 1;
-    bitmap_info.bmiHeader.biBitCount = 32; // (ARGB)
-    bitmap_info.bmiHeader.biCompression = BI_RGB;
-    bitmap_info
-}
- */
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
@@ -314,13 +99,13 @@ fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
     let mut camera = Camera::new(
-        Point::new(0.0, 0.0, 5.0),      // Starting position
-        Point::new(0.0, 0.0, 1.0),       // View direction
-        Point::new(0.0, 1.0, 0.0),       // "Up"-vector
-        60.0,                            // Field of View (FOV)
+        Point::new(0.0, 0.0, 5.0),                  // Starting position
+        Point::new(0.0, 0.0, 1.0),                  // View direction
+        Point::new(0.0, 1.0, 0.0),                  // "Up"-vector
+        60.0,                                       // Field of View (FOV)
         WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
-        0.1,                             // Near clipping
-        100.0                            // Far clipping
+        0.1,                                        // Near clipping
+        100.0,                                      // Far clipping
     );
 
     let window = video_subsystem
@@ -349,23 +134,24 @@ fn main() -> Result<(), String> {
 
     let texture = Texture::from_file("./capsule0.jpg");
 
+    // Sharing texture for ressource management
     let shared_texture = Arc::new(texture);
 
     // Assign texture to polygons
     for polygon in &mut polygons {
-        polygon.texture = Some(shared_texture.clone()) // Some(tex.clone());
+        polygon.texture = Some(shared_texture.clone())
     }
 
     normalize_model(&mut polygons, 2.0);
 
-    let mut bbox_polygons: Vec<Polygon> = Vec::new();
+    // let mut bbox_polygons: Vec<Polygon> = Vec::new();
 
     let mut mouse_captured = false;
     sdl_context.mouse().set_relative_mouse_mode(false);
 
     let mut show_texture = true;
     let mut skip_backfaces = true;
-    let mut show_bbox = false;
+    // let mut show_bbox = false;
 
     println!("Starting SDL2 render loop");
 
@@ -469,14 +255,22 @@ fn main() -> Result<(), String> {
             camera.update_movement(delta_time, &*keys, mouse_delta);
         }
 
+        // Render the scene
         if show_texture {
             render_scene(&camera, &polygons, &mut framebuffer, width, height);
-            fb_to_canvas(&framebuffer, &mut canvas).expect("Error converting framebuffer to canvas");
+            fb_to_canvas(&framebuffer, &mut canvas)
+                .expect("Error converting framebuffer to canvas");
         } else {
-            render_scene_sdl2(&camera, &polygons, &mut canvas, width, height, skip_backfaces)?;
+            render_scene_sdl2(
+                &camera,
+                &polygons,
+                &mut canvas,
+                width,
+                height,
+                skip_backfaces,
+            )?;
         }
 
-        // Render the scene
         /*if show_bbox {
         } else {
             render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
@@ -526,7 +320,13 @@ fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
                     .next()
                     .and_then(|s| s.parse::<f32>().ok())
                     .unwrap_or(0.0);
-                vertices.push(Point::new(x, -z, y));
+                if vars().any(|(k, _)| k == "Z_UP") {
+                    // Defines z as up direction
+                    vertices.push(Point::new(x, y, z));
+                } else {
+                    // Defines y as up direction
+                    vertices.push(Point::new(x, -z, y));
+                }
             }
             "vt" => {
                 // Parse texture coordinates (vt u v)
@@ -628,9 +428,6 @@ fn load_test_cube() -> Vec<Polygon> {
     // Create a simple cube
     let mut polygons = Vec::new();
 
-    // Create a cube centered at (0, 0, -3) instead of (0, 0, 0)
-    // This places it 2 units in front of the camera (which is at z=5)
-
     // Front face (red)
     let mut front = Polygon::new(0xFF0000FF);
     front.add_point(Point::new(-1.0, -1.0, -2.0));
@@ -645,7 +442,6 @@ fn load_test_cube() -> Vec<Polygon> {
     back.add_point(Point::new(1.0, 1.0, -4.0));
     back.add_point(Point::new(1.0, -1.0, -4.0));
 
-    // Add four more faces to complete the cube
     // Right face (blue)
     let mut right = Polygon::new(0x0000FFFF);
     right.add_point(Point::new(1.0, -1.0, -4.0));
@@ -790,12 +586,12 @@ fn render_scene_sdl2(
     canvas.clear();
 
     // Debug: Count processed polygons
-    let mut visible_polygons = 0;
-    let mut total_polygons = 0;
+    // let mut visible_polygons = 0;
+    // let mut total_polygons = 0;
 
     // Process each polygon
     for polygon in polygons {
-        total_polygons += 1;
+        // total_polygons += 1;
 
         // Skip backfaces
         if skip_backfaces && is_backface(polygon, camera.position) {
@@ -818,34 +614,10 @@ fn render_scene_sdl2(
             &view_matrix,
             &projection_matrix,
             width as usize,
-            height as usize
+            height as usize,
         );
 
-        /*
-        let mut vertices_2d: Vec<Point2D> = Vec::new();
-
-        for vertex in &view_vertices {
-            // Skip points behind the camera (z <= 0)
-            if vertex.z < 0.1 {
-                continue; // Skip vertices behind the near plane
-            }
-
-            // Project the point into clip space
-            let projected = projection_matrix.multiply_point(vertex);
-
-            // Perspective division
-            let x_ndc = projected.x / projected.z;
-            let y_ndc = projected.y / projected.z;
-
-            // Convert to screen coordinates
-            let screen_x = ((width as f32 / 2.0) * (1.0 + x_ndc)).round();
-            let screen_y = ((height as f32 / 2.0) * (1.0 - y_ndc)).round();
-
-            vertices_2d.push(Point2D { x: screen_x, y: screen_y, z: 0.0 });
-        }
-         */
-
-        visible_polygons += 1;
+        // visible_polygons += 1;
 
         // Skip empty polygons
         if polygon2d.vertices.len() < 3 {
@@ -860,8 +632,14 @@ fn render_scene_sdl2(
             canvas.set_draw_color(Color::RGBA(r, g, b, a));
 
             canvas.draw_line(
-                SDLPoint::new(polygon2d.vertices[0].x as i32, polygon2d.vertices[0].y as i32),
-                SDLPoint::new(polygon2d.vertices[1].x as i32, polygon2d.vertices[1].y as i32),
+                SDLPoint::new(
+                    polygon2d.vertices[0].x as i32,
+                    polygon2d.vertices[0].y as i32,
+                ),
+                SDLPoint::new(
+                    polygon2d.vertices[1].x as i32,
+                    polygon2d.vertices[1].y as i32,
+                ),
             )?;
             continue;
         }
@@ -880,7 +658,9 @@ fn render_scene_sdl2(
 
         // Draw the polygon
         // Create an array of SDL points for drawing
-        let sdl_points: Vec<SDLPoint> = polygon2d.vertices.iter()
+        let sdl_points: Vec<SDLPoint> = polygon2d
+            .vertices
+            .iter()
             .map(|v| SDLPoint::new(v.x as i32, v.y as i32))
             .collect();
 
@@ -895,8 +675,6 @@ fn render_scene_sdl2(
             canvas.draw_point(current)?;
             canvas.set_draw_color(Color::RGBA(255, 255, 255, 255));
         }
-
-        // Optional: Add filled polygon rendering here once the outlines are working
     }
 
     // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
@@ -904,6 +682,7 @@ fn render_scene_sdl2(
     Ok(())
 }
 
+/*
 fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
     // Calculate model bounds
     let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
@@ -988,6 +767,7 @@ fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
 
     debug_polygons
 }
+ */
 
 fn focus_camera_on_model(camera: &mut Camera, polygons: &[Polygon]) {
     // Calculate model bounds
@@ -1076,7 +856,6 @@ fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
     clipped_vertices
 }
 
-/// A polygon defined as a list of vertices.
 fn project_polygon(
     polygon: &Polygon,
     view_matrix: &Matrix4x4,
@@ -1087,18 +866,18 @@ fn project_polygon(
     let mut vertices_2d: Vec<Point2D> = Vec::new();
     let mut uv_coords_2d: Vec<(f32, f32)> = Vec::new();
 
-    // Transformiere alle Punkte in den View-Space
+    // Transform points to view space
     let mut view_vertices: Vec<Point> = polygon
         .vertices
         .iter()
         .map(|vertex| view_matrix.multiply_point(vertex))
         .collect();
 
-    // Clippe gegen die Near-Plane damit nicht komische obstruktionen entstehen
+    // Clip polygon to near plane
     let near_plane = 0.1;
     view_vertices = clip_polygon_to_near_plane(&view_vertices, near_plane);
 
-    // Prüfe, ob das Polygon noch existiert (kann nach Clipping ungültig werden)
+    // Check if the polygon is completely behind the near plane
     if view_vertices.len() < 3 {
         return Polygon2D {
             vertices: vertices_2d,
@@ -1106,24 +885,24 @@ fn project_polygon(
         };
     }
 
-    // Projiziere alle übriggebliebenen Punkte
+    // Project all remaining vertices
     for (vertex, uv) in view_vertices.iter().zip(&polygon.tex_coords) {
-        // 1. Projiziere den Punkt in den Clip-Space
+        // Project the vertex using the projection matrix
         let projected = projection_matrix.multiply_point(vertex);
 
-        // 2. Perspektivische Division
+        // Divide for perspective
         let x_ndc = projected.x / projected.z;
         let y_ndc = projected.y / projected.z;
 
-        // 3. Konvertiere in Bildschirmkoordinaten
+        // Convert to screen coordinates
         let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
         let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
 
-        // Füge den Punkt in die 2DVertex-Liste ein
+        // Add the point to the 2D vertices
         vertices_2d.push(Point2D {
             x: screen_x,
             y: screen_y,
-            z: projected.z, // Tiefeninformation ändern sich nicht
+            z: projected.z, // Depth information does not change
         });
 
         uv_coords_2d.push(*uv);
@@ -1274,26 +1053,4 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
 
     !(has_neg && has_pos)
         || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
-}
-
-fn process_faces(vertices: &Vec<Point>, faces: &Vec<Vec<usize>>) -> Vec<Polygon> {
-    faces
-        .par_iter()
-        .filter_map(|face| {
-            if face.len() < 3 {
-                return None; // Ungültiges Face überspringen
-            }
-
-            // Punkte extrahieren
-            let points: Vec<Point> = face.iter().map(|&i| vertices[i]).collect();
-
-            // Neues Polygon erstellen
-            let mut polygon = Polygon::new(0xFFFFFFFF);
-            for point in &points {
-                polygon.add_point(*point);
-            }
-
-            Some(polygon)
-        })
-        .collect()
 }
