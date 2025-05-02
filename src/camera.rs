@@ -57,7 +57,9 @@ impl Camera {
         }
     }
 
-
+    pub fn update_ratio(&mut self, new_ratio: f32){
+        self.aspect_ratio = new_ratio;
+    }
 
     // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
     pub fn view_matrix(&self) -> Matrix4x4 {

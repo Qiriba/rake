@@ -49,6 +49,7 @@ const WINDOW_HEIGHT: f64 = 600.0;
 pub const TARGET_FPS: f32 = 60.0;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
 
+/*
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
         Point::new(0.0, 0.0, 5.0),      // Starting position
@@ -60,6 +61,7 @@ lazy_static! {
         100.0                            // Far clipping
     ));
 }
+ */
 
 lazy_static! {
     static ref KEYS: Mutex<[bool; 256]> = Mutex::new([false; 256]);
@@ -223,8 +225,7 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, hbitmap: HBITMAP, pixels: *mut u
 }
  */
 
-fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
-    let camera = CAMERA.lock().unwrap();
+fn render_scene(camera: &Camera, polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer, width: u32, height: u32) {
     let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix nach veränderter camera
     let projection_matrix = camera.projection_matrix();
 
@@ -241,8 +242,8 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
                 polygon,
                 &view_matrix,
                 &projection_matrix,
-                WINDOW_WIDTH as usize,
-                WINDOW_HEIGHT as usize,
+                width as usize,
+                height as usize,
             );
 
             // Gib Option<&Texture> weiter, falls vorhanden
@@ -312,6 +313,15 @@ const INITIAL_HEIGHT: u32 = 240;
 fn main() -> Result<(), String> {
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
+    let mut camera = Camera::new(
+        Point::new(0.0, 0.0, 5.0),      // Starting position
+        Point::new(0.0, 0.0, 1.0),       // View direction
+        Point::new(0.0, 1.0, 0.0),       // "Up"-vector
+        60.0,                            // Field of View (FOV)
+        WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32, // Seitenverhältnis
+        0.1,                             // Near clipping
+        100.0                            // Far clipping
+    );
 
     let window = video_subsystem
         .window("rake", INITIAL_WIDTH, INITIAL_HEIGHT)
@@ -342,11 +352,9 @@ fn main() -> Result<(), String> {
     let shared_texture = Arc::new(texture);
 
     // Assign texture to polygons
-    // if let Some(tex) = texture {
     for polygon in &mut polygons {
         polygon.texture = Some(shared_texture.clone()) // Some(tex.clone());
     }
-    // }
 
     normalize_model(&mut polygons, 2.0);
 
@@ -377,6 +385,7 @@ fn main() -> Result<(), String> {
                     if let sdl2::event::WindowEvent::Resized(w, h) = win_event {
                         width = w as u32;
                         height = h as u32;
+                        camera.update_ratio(width as f32 / height as f32);
                         framebuffer.resize(width as usize, height as usize);
                         println!("Window resized to: {}x{}", width, height);
                     }
@@ -401,7 +410,7 @@ fn main() -> Result<(), String> {
                             show_texture = !show_texture;
                             println!("Show texture: {}", show_texture);
                         }
-                        Keycode::Comma => focus_camera_on_model(&polygons),
+                        Keycode::Comma => focus_camera_on_model(&mut camera, &polygons),
                         Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
@@ -456,16 +465,15 @@ fn main() -> Result<(), String> {
 
         // Update camera (with mouse delta)
         {
-            let mut camera = CAMERA.lock().unwrap();
             let keys = KEYS.lock().unwrap();
             camera.update_movement(delta_time, &*keys, mouse_delta);
         }
 
         if show_texture {
-            render_scene(&polygons, &mut framebuffer);
+            render_scene(&camera, &polygons, &mut framebuffer, width, height);
             fb_to_canvas(&framebuffer, &mut canvas).expect("Error converting framebuffer to canvas");
         } else {
-            render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+            render_scene_sdl2(&camera, &polygons, &mut canvas, width, height, skip_backfaces)?;
         }
 
         // Render the scene
@@ -764,6 +772,7 @@ fn vec32_to_u8array(vec: &Vec<u32>) -> Vec<u8> {
 }
 
 fn render_scene_sdl2(
+    camera: &Camera,
     polygons: &[Polygon],
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     width: u32,
@@ -771,7 +780,6 @@ fn render_scene_sdl2(
     skip_backfaces: bool,
 ) -> Result<(), String> {
     // Get the camera state
-    let camera = CAMERA.lock().unwrap();
     let view_matrix = camera.view_matrix();
     let projection_matrix = camera.projection_matrix();
 
@@ -805,6 +813,15 @@ fn render_scene_sdl2(
             continue;
         }
 
+        let polygon2d = project_polygon(
+            polygon,
+            &view_matrix,
+            &projection_matrix,
+            width as usize,
+            height as usize
+        );
+
+        /*
         let mut vertices_2d: Vec<Point2D> = Vec::new();
 
         for vertex in &view_vertices {
@@ -826,14 +843,15 @@ fn render_scene_sdl2(
 
             vertices_2d.push(Point2D { x: screen_x, y: screen_y, z: 0.0 });
         }
+         */
 
         visible_polygons += 1;
 
         // Skip empty polygons
-        if vertices_2d.len() < 3 {
+        if polygon2d.vertices.len() < 3 {
             println!("Polygon was clipped to < 3 vertices");
             continue;
-        } else if vertices_2d.len() == 2 {
+        } else if polygon2d.vertices.len() == 2 {
             // Set color for line
             let r = ((polygon.color >> 16) & 0xFF) as u8;
             let g = ((polygon.color >> 8) & 0xFF) as u8;
@@ -842,8 +860,8 @@ fn render_scene_sdl2(
             canvas.set_draw_color(Color::RGBA(r, g, b, a));
 
             canvas.draw_line(
-                SDLPoint::new(vertices_2d[0].x as i32, vertices_2d[0].y as i32),
-                SDLPoint::new(vertices_2d[1].x as i32, vertices_2d[1].y as i32),
+                SDLPoint::new(polygon2d.vertices[0].x as i32, polygon2d.vertices[0].y as i32),
+                SDLPoint::new(polygon2d.vertices[1].x as i32, polygon2d.vertices[1].y as i32),
             )?;
             continue;
         }
@@ -862,7 +880,7 @@ fn render_scene_sdl2(
 
         // Draw the polygon
         // Create an array of SDL points for drawing
-        let sdl_points: Vec<SDLPoint> = vertices_2d.iter()
+        let sdl_points: Vec<SDLPoint> = polygon2d.vertices.iter()
             .map(|v| SDLPoint::new(v.x as i32, v.y as i32))
             .collect();
 
@@ -881,7 +899,7 @@ fn render_scene_sdl2(
         // Optional: Add filled polygon rendering here once the outlines are working
     }
 
-    println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
+    // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
 }
@@ -971,7 +989,7 @@ fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
     debug_polygons
 }
 
-fn focus_camera_on_model(polygons: &[Polygon]) {
+fn focus_camera_on_model(camera: &mut Camera, polygons: &[Polygon]) {
     // Calculate model bounds
     let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
     let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
@@ -994,8 +1012,6 @@ fn focus_camera_on_model(polygons: &[Polygon]) {
         (min.y + max.y) / 2.0,
         (min.z + max.z) / 2.0,
     );
-
-    let mut camera = CAMERA.lock().unwrap();
 
     // Calculate direction from camera position to model center
     let direction = center - camera.position;
