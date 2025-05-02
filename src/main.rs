@@ -22,10 +22,9 @@ use std::ffi::CString;
 use std::fmt::Debug;
 use std::io::Write;
 use std::ptr::null_mut;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use std::{env, io};
-use std::collections::HashSet;
 /*
 use winit::{
     event::{ElementState, Event, WindowEvent},
@@ -47,7 +46,7 @@ use winit::error::EventLoopError;
 
 const WINDOW_WIDTH: f64 = 800.0;
 const WINDOW_HEIGHT: f64 = 600.0;
-const TARGET_FPS: f32 = 30.0;
+pub const TARGET_FPS: f32 = 60.0;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
 
 lazy_static! {
@@ -224,7 +223,6 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, hbitmap: HBITMAP, pixels: *mut u
 }
  */
 
-/*
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
     let camera = CAMERA.lock().unwrap();
     let view_matrix = camera.view_matrix(); // Neuberechnung der View-Matrix nach veränderter camera
@@ -259,7 +257,6 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
         framebuffer.draw_polygon(&projected, texture, color);
     }
 }
- */
 
 fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     if polygon.vertices.len() < 3 {
@@ -306,7 +303,7 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Point as SDLPoint;
 
 const INITIAL_WIDTH: u32 = 320;
@@ -332,11 +329,24 @@ fn main() -> Result<(), String> {
     let mut width = INITIAL_WIDTH;
     let mut height = INITIAL_HEIGHT;
 
-    let mut polygons = load_test_cube(); /*load_obj("./example.obj").unwrap_or_else(|e| {
+    let mut framebuffer = Framebuffer::new(width as usize, height as usize);
+
+    let mut polygons = load_obj("./capsule.obj").unwrap_or_else(|e| {
         println!("Error loading OBJ file: {}", e);
         println!("Falling back to default cube");
         load_test_cube()
-    }); */
+    });
+
+    let texture = Texture::from_file("./capsule0.jpg");
+
+    let shared_texture = Arc::new(texture);
+
+    // Assign texture to polygons
+    // if let Some(tex) = texture {
+        for polygon in &mut polygons {
+            polygon.texture = Some(shared_texture.clone()) // Some(tex.clone());
+        }
+    // }
 
     normalize_model(&mut polygons, 2.0);
 
@@ -357,24 +367,28 @@ fn main() -> Result<(), String> {
         // Handle events
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit { .. } |
-                Event::KeyDown { keycode: Some(Keycode::Escape), .. } => {
-                    break 'running
-                },
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
                 Event::Window { win_event, .. } => {
                     if let sdl2::event::WindowEvent::Resized(w, h) = win_event {
                         width = w as u32;
                         height = h as u32;
+                        framebuffer.resize(width as usize, height as usize);
                         println!("Window resized to: {}x{}", width, height);
                     }
-                },
+                }
                 Event::MouseMotion { xrel, yrel, .. } => {
                     if mouse_captured {
                         mouse_delta.0 = xrel as f32 * 2.5;
                         mouse_delta.1 = yrel as f32 * 2.5;
                     }
-                },
-                Event::KeyDown { keycode: Some(key), .. } => {
+                }
+                Event::KeyDown {
+                    keycode: Some(key), ..
+                } => {
                     // Update key state
                     let mut keys = KEYS.lock().unwrap();
                     match key {
@@ -382,14 +396,12 @@ fn main() -> Result<(), String> {
                         Keycode::A => keys['A' as usize] = true,
                         Keycode::S => keys['S' as usize] = true,
                         Keycode::D => keys['D' as usize] = true,
-                        Keycode::Comma => {
-                            focus_camera_on_model(&polygons)
-                        }
+                        Keycode::Comma => focus_camera_on_model(&polygons),
                         Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
                             println!("Skip backfaces: {}", skip_backfaces);
-                        },
+                        }
                         Keycode::P => {
                             show_bbox = !show_bbox;
                             if show_bbox {
@@ -402,11 +414,13 @@ fn main() -> Result<(), String> {
                         Keycode::Tab => {
                             mouse_captured = !mouse_captured;
                             sdl_context.mouse().set_relative_mouse_mode(mouse_captured);
-                        },
+                        }
                         _ => {}
                     }
-                },
-                Event::KeyUp { keycode: Some(key), .. } => {
+                }
+                Event::KeyUp {
+                    keycode: Some(key), ..
+                } => {
                     // Update key state
                     let mut keys = KEYS.lock().unwrap();
                     match key {
@@ -417,7 +431,7 @@ fn main() -> Result<(), String> {
                         Keycode::Space => keys['V' as usize] = false,
                         _ => {}
                     }
-                },
+                }
                 _ => {}
             }
         }
@@ -441,15 +455,20 @@ fn main() -> Result<(), String> {
             camera.update_movement(delta_time, &*keys, mouse_delta);
         }
 
-        // Render the scene
-        if show_bbox {
+        if true {
             render_scene_sdl2(&bbox_polygons, &mut canvas, width, height, skip_backfaces)?;
-        }else{
-            render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+        } else {
+            render_scene(&polygons, &mut framebuffer);
+            fb_to_canvas(&framebuffer, &mut canvas).expect("Error converting framebuffer to canvas");
         }
 
-        canvas.present();
+        // Render the scene
+        /*if show_bbox {
+        } else {
+            render_scene_sdl2(&polygons, &mut canvas, width, height, skip_backfaces)?;
+        }*/
 
+        canvas.present();
     }
 
     Ok(())
@@ -457,8 +476,8 @@ fn main() -> Result<(), String> {
 
 fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
     // Read the file to string
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| format!("Failed to read OBJ file: {}", e))?;
+    let content =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read OBJ file: {}", e))?;
 
     let mut vertices = Vec::new();
     let mut tex_coords = Vec::new();
@@ -481,24 +500,48 @@ fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
         match identifier {
             "v" => {
                 // Parse vertex position (v x y z)
-                let x = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let y = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let z = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                vertices.push(Point::new(x, y, z));
-            },
+                let x = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let y = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let z = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                vertices.push(Point::new(x, -z, y));
+            }
             "vt" => {
                 // Parse texture coordinates (vt u v)
-                let u = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let v = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let u = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let v = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 tex_coords.push((u, v));
-            },
+            }
             "vn" => {
                 // Parse normals (vn x y z)
-                let nx = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let ny = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
-                let nz = parts.next().and_then(|s| s.parse::<f32>().ok()).unwrap_or(0.0);
+                let nx = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let ny = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
+                let nz = parts
+                    .next()
+                    .and_then(|s| s.parse::<f32>().ok())
+                    .unwrap_or(0.0);
                 normals.push(Point::new(nx, ny, nz));
-            },
+            }
             "f" => {
                 // Parse face (f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 ...)
                 let mut face_vertices = Vec::new();
@@ -542,12 +585,13 @@ fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
 
                     // Add texture coordinates if available
                     if !face_tex_coords.is_empty() {
+                        face_tex_coords.swap(1, 2);
                         polygon.tex_coords = face_tex_coords;
                     }
 
                     polygons.push(polygon);
                 }
-            },
+            }
             _ => {} // Ignore other lines
         }
     }
@@ -556,7 +600,12 @@ fn load_obj(path: &str) -> Result<Vec<Polygon>, String> {
     if polygons.is_empty() {
         Err("No valid polygons found in the OBJ file".to_string())
     } else {
-        println!("Loaded {} vertices and {} polygons from {}", vertices.len(), polygons.len(), path);
+        println!(
+            "Loaded {} vertices and {} polygons from {}",
+            vertices.len(),
+            polygons.len(),
+            path
+        );
         Ok(polygons)
     }
 }
@@ -661,15 +710,51 @@ fn normalize_model(polygons: &mut Vec<Polygon>, target_size: f32) {
             );
 
             // Scale it to target size
-            *vertex = Point::new(
-                vertex.x * scale,
-                vertex.y * scale,
-                vertex.z * scale,
-            );
+            *vertex = Point::new(vertex.x * scale, vertex.y * scale, vertex.z * scale);
         }
     }
 
     println!("Model normalized: center={:?}, scale={}", center, scale);
+}
+
+fn fb_to_canvas(
+    framebuffer: &Framebuffer,
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+) -> Result<(), String> {
+    let width = framebuffer.width;
+    let height = framebuffer.height;
+
+    // Create a texture from the framebuffer data
+    let texture_creator = canvas.texture_creator();
+    let mut texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::ARGB8888, width as u32, height as u32)
+        .map_err(|e| e.to_string())?;
+
+    // Update the texture with the framebuffer data
+    texture
+        .update(
+            None,
+            &vec32_to_u8array(&framebuffer.pixels),
+            framebuffer.width as usize * 4,
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Clear the canvas
+    canvas.clear();
+
+    // Copy the texture to the canvas
+    canvas.copy(&texture, None, None)?;
+
+    Ok(())
+}
+
+fn vec32_to_u8array(vec: &Vec<u32>) -> Vec<u8> {
+    let mut result = Vec::new();
+    for &value in vec {
+        let bytes = value.to_ne_bytes();
+        result.extend_from_slice(&bytes);
+    }
+    result
 }
 
 fn render_scene_sdl2(
@@ -677,7 +762,7 @@ fn render_scene_sdl2(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     width: u32,
     height: u32,
-    skip_backfaces: bool
+    skip_backfaces: bool,
 ) -> Result<(), String> {
     // Get the camera state
     let camera = CAMERA.lock().unwrap();
@@ -710,7 +795,7 @@ fn render_scene_sdl2(
             .collect();
 
         // Check if the entire polygon is behind the camera
-        if view_vertices.iter().all(|v| v.z <= 0.1){
+        if view_vertices.iter().all(|v| v.z <= 0.1) {
             continue;
         }
 
@@ -791,7 +876,6 @@ fn render_scene_sdl2(
     // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
-
 }
 
 fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
@@ -826,18 +910,50 @@ fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
     // Add colored faces (for a cube at the center point)
     // Front face (bright red)
     let mut front = Polygon::new(0xFF0000FF);
-    front.add_point(Point::new(center.x - marker_size, center.y - marker_size, center.z - marker_size));
-    front.add_point(Point::new(center.x + marker_size, center.y - marker_size, center.z - marker_size));
-    front.add_point(Point::new(center.x + marker_size, center.y + marker_size, center.z - marker_size));
-    front.add_point(Point::new(center.x - marker_size, center.y + marker_size, center.z - marker_size));
+    front.add_point(Point::new(
+        center.x - marker_size,
+        center.y - marker_size,
+        center.z - marker_size,
+    ));
+    front.add_point(Point::new(
+        center.x + marker_size,
+        center.y - marker_size,
+        center.z - marker_size,
+    ));
+    front.add_point(Point::new(
+        center.x + marker_size,
+        center.y + marker_size,
+        center.z - marker_size,
+    ));
+    front.add_point(Point::new(
+        center.x - marker_size,
+        center.y + marker_size,
+        center.z - marker_size,
+    ));
     debug_polygons.push(front);
 
     // Add more faces of different colors
     let mut back = Polygon::new(0x00FF00FF); // Green
-    back.add_point(Point::new(center.x - marker_size, center.y - marker_size, center.z + marker_size));
-    back.add_point(Point::new(center.x - marker_size, center.y + marker_size, center.z + marker_size));
-    back.add_point(Point::new(center.x + marker_size, center.y + marker_size, center.z + marker_size));
-    back.add_point(Point::new(center.x + marker_size, center.y - marker_size, center.z + marker_size));
+    back.add_point(Point::new(
+        center.x - marker_size,
+        center.y - marker_size,
+        center.z + marker_size,
+    ));
+    back.add_point(Point::new(
+        center.x - marker_size,
+        center.y + marker_size,
+        center.z + marker_size,
+    ));
+    back.add_point(Point::new(
+        center.x + marker_size,
+        center.y + marker_size,
+        center.z + marker_size,
+    ));
+    back.add_point(Point::new(
+        center.x + marker_size,
+        center.y - marker_size,
+        center.z + marker_size,
+    ));
     debug_polygons.push(back);
 
     println!("Created center marker at {:?}", center);
@@ -881,7 +997,7 @@ fn focus_camera_on_model(polygons: &[Polygon]) {
     let direction = Point::new(
         direction.x / direction_length,
         direction.y / direction_length,
-        direction.z / direction_length
+        direction.z / direction_length,
     );
 
     // Calculate pitch and yaw to look directly at model center
@@ -895,7 +1011,10 @@ fn focus_camera_on_model(polygons: &[Polygon]) {
     println!("Model center: {:?}", center);
     println!("Camera position: {:?}", camera.position);
     println!("Looking direction: {:?}", direction);
-    println!("Camera angles: pitch={:.2}, yaw={:.2}", camera.pitch, camera.yaw);
+    println!(
+        "Camera angles: pitch={:.2}, yaw={:.2}",
+        camera.pitch, camera.yaw
+    );
 }
 
 fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {

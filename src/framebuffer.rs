@@ -1,4 +1,5 @@
 use std::ptr;
+use std::sync::Arc;
 use crate::{point, triangulate_ear_clipping, Point2D, Polygon2D};
 use crate::texture::Texture;
 
@@ -36,7 +37,7 @@ impl Framebuffer {
     }
 
     ///Erstellt Dreiecke aus dem gegebenen Polygon und rasterisiert diese in den Frambuffer, mit oder ohne Textur
-    pub(crate) fn draw_polygon(&mut self, polygon: &Polygon2D, texture: Option<&Texture>, color: u32) {
+    pub(crate) fn draw_polygon(&mut self, polygon: &Polygon2D, texture: Option<&Arc<Texture>>, color: u32) {
         if let Some(texture) = texture {
             // Texturiertes Rendering
             let triangles = triangulate_ear_clipping(polygon);
@@ -176,6 +177,13 @@ impl Framebuffer {
                 }
             }
         }
+    }
+
+    pub(crate) fn resize(&mut self, width: usize, height: usize) {
+        self.width = width;
+        self.height = height;
+        self.pixels.resize(self.width * self.height, 0);
+        self.z_buffer.resize(self.width * self.height, f32::INFINITY);
     }
 }
 
