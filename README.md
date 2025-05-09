@@ -48,3 +48,5 @@ These are the commands to use the rake renderer:
 - `t` - toggle wireframe mode
 - `b` - toggle backface culling (only works in wireframe mode)
 - `ESC` - exit the program
+
+The program will render a shaded background to guide you to the object.
