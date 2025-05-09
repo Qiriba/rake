@@ -3,7 +3,6 @@ use std::io::{BufRead, BufReader};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use crate::point::Point;
 use crate::Polygon;
-use rayon::iter::IndexedParallelIterator;
 
 pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, Vec<usize>)>, Vec<(f32, f32)>), String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;

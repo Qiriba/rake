@@ -30,12 +30,11 @@ use std::time::Instant;
 use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
 use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
 use winapi::um::wingdi::{BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY};
-use winapi::um::winuser::{ClipCursor, CreateWindowExA, DefWindowProcA, DispatchMessageW, GetAsyncKeyState, GetClientRect, GetCursorPos, GetWindow, GetWindowRect, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
+use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageW, GetClientRect, GetCursorPos, GetWindowRect, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
 use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
 use lazy_static::lazy_static;
 use crate::texture::Texture;
-
 use rayon::prelude::*;
 
 static mut WINDOW_WIDTH: usize = 800;
@@ -243,7 +242,7 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
                 return None;
             }
 
-            let projected = project_polygon(
+            let projected = polygon::project_polygon(
                 polygon,
                 &view_matrix,
                 &projection_matrix,
@@ -442,11 +441,6 @@ fn main() {
                 lag -= TIMESTEP;
             }
 
-            //let event_start = Instant::now();
-            //let event_time = event_start.elapsed();
-            //println!("Zeit für framebuffclear: {:.2?}", event_time);
-
-
             // Zeichne alle Polygone in den framebuffer
             unsafe {
                 if let Some(ref polygons) = POLYGONS {
@@ -454,242 +448,8 @@ fn main() {
                 }
             };
 
-            // Zeichne den Frame in das fenster
+            // Zeichne den Frame in das Fenster
             draw_frame(&framebuffer, framebuffer.width, framebuffer.height, hbitmap, pixels, hdc, window_hdc);
         }
     }
-}
-fn clip_polygon_to_near_plane(vertices: &Vec<Point>, near: f32) -> Vec<Point> {
-    let mut clipped_vertices = Vec::new();
-
-    for i in 0..vertices.len() {
-        let current = vertices[i];
-        let next = vertices[(i + 1) % vertices.len()];
-
-        let current_inside = current.z >= near;
-        let next_inside = next.z >= near;
-
-        // Beide Punkte innerhalb
-        if current_inside && next_inside {
-            clipped_vertices.push(next);
-        }
-        // Schnittpunkt
-        else if current_inside || next_inside {
-            let t = (near - current.z) / (next.z - current.z);
-            let intersection = Point {
-                x: current.x + t * (next.x - current.x),
-                y: current.y + t * (next.y - current.y),
-                z: near,
-            };
-
-            if current_inside {
-                clipped_vertices.push(intersection);
-            } else {
-                clipped_vertices.push(intersection);
-                clipped_vertices.push(next);
-            }
-        }
-    }
-
-    clipped_vertices
-}
-
-/// A polygon defined as a list of vertices.
-fn project_polygon(
-    polygon: &Polygon,
-    view_matrix: &Matrix4x4,
-    projection_matrix: &Matrix4x4,
-    screen_width: usize,
-    screen_height: usize,
-) -> Polygon2D {
-    let mut vertices_2d: Vec<Point2D> = Vec::new();
-    let mut uv_coords_2d: Vec<(f32, f32)> = Vec::new();
-
-    // Transformiere alle Punkte in den View-Space
-    let mut view_vertices: Vec<Point> = polygon
-        .vertices
-        .iter()
-        .map(|vertex| view_matrix.multiply_point(vertex))
-        .collect();
-
-    // Clippe gegen die Near-Plane damit nicht komische obstruktionen entstehen
-    let near_plane = 0.1;
-    view_vertices = clip_polygon_to_near_plane(&view_vertices, near_plane);
-
-    // Prüfe, ob das Polygon noch existiert (kann nach Clipping ungültig werden)
-    if view_vertices.len() < 3 {
-        return Polygon2D {
-            vertices: vertices_2d,
-            uv_coords: uv_coords_2d,
-        };
-    }
-
-    // Projiziere alle übriggebliebenen Punkte
-    for (vertex, uv) in view_vertices.iter().zip(&polygon.tex_coords) {
-        // 1. Projiziere den Punkt in den Clip-Space
-        let projected = projection_matrix.multiply_point(vertex);
-
-        // 2. Perspektivische Division
-        let x_ndc = projected.x / projected.z;
-        let y_ndc = projected.y / projected.z;
-
-        // 3. Konvertiere in Bildschirmkoordinaten
-        let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
-        let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
-
-        // Füge den Punkt in die 2DVertex-Liste ein
-        vertices_2d.push(Point2D {
-            x: screen_x,
-            y: screen_y,
-            z: projected.z, // Tiefeninformation ändern sich nicht
-        });
-
-        uv_coords_2d.push(*uv);
-    }
-
-    Polygon2D {
-        vertices: vertices_2d,
-        uv_coords: uv_coords_2d,
-    }
-}
-
-
-fn triangulate_ear_clipping(
-    polygon: &Polygon2D,
-) -> Vec<((Point2D, (f32, f32)), (Point2D, (f32, f32)), (Point2D, (f32, f32)))> {
-    let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
-    let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
-    let mut triangles = Vec::new();
-    // Rechteck/Quadrat: Sonderfall – einfache Zwei-Dreiecks-Zerlegung
-    if vertices.len() == 4 {
-        return vec![
-            (
-                (vertices[0], uv_coords[0]),
-                (vertices[1], uv_coords[1]),
-                (vertices[2], uv_coords[2]),
-            ),
-            (
-                (vertices[2], uv_coords[2]),
-                (vertices[3], uv_coords[3]),
-                (vertices[0], uv_coords[0]),
-            ),
-        ];
-    }
-
-    ensure_ccw(&mut vertices);
-
-    // Starte die Triangulation
-    while vertices.len() > 3 {
-        let mut ear_found = false;
-
-        // Finde ein "Ohr" im Polygon
-        for i in 0..vertices.len() {
-            // Vorheriger, aktueller und nächster Punkt
-            let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
-            let prev_uv = uv_coords[(i + uv_coords.len() - 1) % uv_coords.len()];
-            let curr = vertices[i];
-            let curr_uv = uv_coords[i];
-            let next = vertices[(i + 1) % vertices.len()];
-            let next_uv = uv_coords[(i + 1) % uv_coords.len()];
-
-            // Prüfe, ob ein Ohr gefunden wurde
-            if is_ear(prev, curr, next, &vertices) {
-                // Füge das Ohr als ein Dreieck hinzu
-                triangles.push((
-                    (prev, prev_uv),
-                    (curr, curr_uv),
-                    (next, next_uv),
-                ));
-
-                // Entferne den aktuellen Punkt und seine UVs aus der Liste
-                vertices.remove(i);
-                uv_coords.remove(i);
-
-                ear_found = true;
-                break;
-            }
-        }
-
-        // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich
-        // ungültig oder zu komplex.
-        if !ear_found {
-            panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");                      // TODO: Panic irgendwie ersetzen mit error oder so
-        }
-    }
-
-    // Füge das letzte verbleibende Dreieck hinzu (wenn noch genau 3 Punkte übrig sind)
-    if vertices.len() == 3 {
-        triangles.push((
-            (vertices[0], uv_coords[0]),
-            (vertices[1], uv_coords[1]),
-            (vertices[2], uv_coords[2]),
-        ));
-    }
-
-    triangles
-}
-
-#[inline(always)]
-fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> bool {
-    if !is_ccw(prev, curr, next) {
-        return false; // Das Dreieck ist nicht gegen den Uhrzeigersinn
-    }
-
-    // Prüfe, ob ein anderer Punkt innerhalb des Dreiecks liegt
-    for &v in vertices {
-        if v != prev && v != curr && v != next && is_point_in_triangle(v, prev, curr, next) {
-            return false;
-        }
-    }
-    true
-}
-
-#[inline(always)]
-fn is_ccw(p1: Point2D, p2: Point2D, p3: Point2D) -> bool {
-
-    let cross_product = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
-
-    if cross_product > 0.0 {
-        true // Gegen den Uhrzeigersinn
-    } else {
-        false
-    }
-}
-
-#[inline(always)]
-fn is_polygon_ccw(vertices: &[Point2D]) -> bool {
-    let mut sum = 0.0;
-    for i in 0..vertices.len() {
-        let current = vertices[i];
-        let next = vertices[(i + 1) % vertices.len()];
-        sum += (next.x - current.x) * (next.y + current.y);
-    }
-    if sum > 0.0 {
-        true // Polygon in Gegen-Uhrzeigersinn
-    } else {
-        false
-    }
-}
-
-#[inline(always)]
-fn ensure_ccw(vertices: &mut Vec<Point2D>) {
-    if !is_polygon_ccw(vertices) {
-        vertices.reverse();
-    }
-}
-
-#[inline(always)]
-fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool {
-    let det = |p1: Point2D, p2: Point2D, p3: Point2D| -> f32 {
-        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
-    };
-
-    let d1 = det(p, a, b);
-    let d2 = det(p, b, c);
-    let d3 = det(p, c, a);
-
-    let has_neg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
-    let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
-
-    !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }

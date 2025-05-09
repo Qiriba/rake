@@ -1,5 +1,5 @@
 use std::ptr;
-use crate::{point, triangulate_ear_clipping, Point2D, Polygon2D};
+use crate::{point, Point2D, Polygon2D};
 use crate::texture::Texture;
 
 #[derive(Clone)]
@@ -192,4 +192,144 @@ fn rgba_to_u32(rgba: [u8; 4]) -> u32 {
         ((rgba[0] as u32) << 16) | // Rot
         ((rgba[1] as u32) << 8)  | // Grün
         (rgba[2] as u32)          // Blau
+}
+
+fn triangulate_ear_clipping(
+    polygon: &Polygon2D,
+) -> Vec<((Point2D, (f32, f32)), (Point2D, (f32, f32)), (Point2D, (f32, f32)))> {
+    let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
+    let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
+    let mut triangles = Vec::new();
+    // Rechteck/Quadrat: Sonderfall – einfache Zwei-Dreiecks-Zerlegung
+    if vertices.len() == 4 {
+        return vec![
+            (
+                (vertices[0], uv_coords[0]),
+                (vertices[1], uv_coords[1]),
+                (vertices[2], uv_coords[2]),
+            ),
+            (
+                (vertices[2], uv_coords[2]),
+                (vertices[3], uv_coords[3]),
+                (vertices[0], uv_coords[0]),
+            ),
+        ];
+    }
+
+    ensure_ccw(&mut vertices);
+
+    // Starte die Triangulation
+    while vertices.len() > 3 {
+        let mut ear_found = false;
+
+        // Finde ein "Ohr" im Polygon
+        for i in 0..vertices.len() {
+            // Vorheriger, aktueller und nächster Punkt
+            let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
+            let prev_uv = uv_coords[(i + uv_coords.len() - 1) % uv_coords.len()];
+            let curr = vertices[i];
+            let curr_uv = uv_coords[i];
+            let next = vertices[(i + 1) % vertices.len()];
+            let next_uv = uv_coords[(i + 1) % uv_coords.len()];
+
+            // Prüfe, ob ein Ohr gefunden wurde
+            if is_ear(prev, curr, next, &vertices) {
+                // Füge das Ohr als ein Dreieck hinzu
+                triangles.push((
+                    (prev, prev_uv),
+                    (curr, curr_uv),
+                    (next, next_uv),
+                ));
+
+                // Entferne den aktuellen Punkt und seine UVs aus der Liste
+                vertices.remove(i);
+                uv_coords.remove(i);
+
+                ear_found = true;
+                break;
+            }
+        }
+
+        // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich
+        // ungültig oder zu komplex.
+        if !ear_found {
+            panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");
+        }
+    }
+
+    // Füge das letzte verbleibende Dreieck hinzu (wenn noch genau 3 Punkte übrig sind)
+    if vertices.len() == 3 {
+        triangles.push((
+            (vertices[0], uv_coords[0]),
+            (vertices[1], uv_coords[1]),
+            (vertices[2], uv_coords[2]),
+        ));
+    }
+
+    triangles
+}
+
+#[inline(always)]
+fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> bool {
+    if !is_ccw(prev, curr, next) {
+        return false; // Das Dreieck ist nicht gegen den Uhrzeigersinn
+    }
+
+    // Prüfe, ob ein anderer Punkt innerhalb des Dreiecks liegt
+    for &v in vertices {
+        if v != prev && v != curr && v != next && is_point_in_triangle(v, prev, curr, next) {
+            return false;
+        }
+    }
+    true
+}
+
+#[inline(always)]
+fn is_ccw(p1: Point2D, p2: Point2D, p3: Point2D) -> bool {
+
+    let cross_product = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+
+    if cross_product > 0.0 {
+        true // Gegen den Uhrzeigersinn
+    } else {
+        false
+    }
+}
+
+#[inline(always)]
+fn is_polygon_ccw(vertices: &[Point2D]) -> bool {
+    let mut sum = 0.0;
+    for i in 0..vertices.len() {
+        let current = vertices[i];
+        let next = vertices[(i + 1) % vertices.len()];
+        sum += (next.x - current.x) * (next.y + current.y);
+    }
+    if sum > 0.0 {
+        true // Polygon in Gegen-Uhrzeigersinn
+    } else {
+        false
+    }
+}
+
+#[inline(always)]
+fn ensure_ccw(vertices: &mut Vec<Point2D>) {
+    if !is_polygon_ccw(vertices) {
+        vertices.reverse();
+    }
+}
+
+#[inline(always)]
+fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool {
+    let det = |p1: Point2D, p2: Point2D, p3: Point2D| -> f32 {
+        (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x)
+    };
+
+    let d1 = det(p, a, b);
+    let d2 = det(p, b, c);
+    let d3 = det(p, c, a);
+
+    let has_neg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
+    let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
+
+    !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }
