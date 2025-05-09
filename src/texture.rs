@@ -1,5 +1,5 @@
+use std::error::Error;
 use image::{open, GenericImageView};
-
 
 #[derive(Debug, Clone)]
 pub struct Texture {
@@ -9,20 +9,26 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn from_file(filepath: &str) -> Self {
-        let img = open(filepath).expect("Fehler beim Laden der Texturdatei!");
+    pub fn from_file(filepath: &str) -> Result<Self, String> {
+        let img = open(filepath);
+        if let Ok(img) = img {
 
-        let (width, height) = img.dimensions();
+            let (width, height) = img.dimensions();
 
-        let img = img.to_rgba8();
+            let img = img.to_rgba8();
 
-        let data = img.into_raw();
+            let data = img.into_raw();
 
-        Texture {
-            width: width as usize,
-            height: height as usize,
-            data,
+            Ok(Texture {
+                width: width as usize,
+                height: height as usize,
+                data,
+            })
+        }else {
+            println!("Failed to load texture from file: {}", filepath);
+            Err("Failed to load texture from file ".into())
         }
+
     }
 
     // Get texture ID for caching
