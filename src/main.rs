@@ -20,13 +20,14 @@ mod object;
 pub use framebuffer::Framebuffer;
 
 extern crate winapi;
-use std::cmp::PartialEq;
 use std::ptr::null_mut;
 use std::ffi::CString;
+use std::io;
 use std::io::Write;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use winapi::shared::windef::{HBITMAP, HDC, HWND, LPRECT, POINT, RECT};
+use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
 use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
 use winapi::um::wingdi::{BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY};
 use winapi::um::winuser::{ClipCursor, CreateWindowExA, DefWindowProcA, DispatchMessageW, GetAsyncKeyState, GetClientRect, GetCursorPos, GetWindow, GetWindowRect, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
@@ -45,10 +46,10 @@ static mut POLYGONS: Option<Vec<Polygon>> = None;
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
         Point::new(0.0, 0.0, -5.0),      // Startposition der Kamera
-        Point::new(0.0, 0.0, -1.0),       // Blickrichtung
+        Point::new(0.0, 0.0, -1.0),      // Blickrichtung
         Point::new(0.0, 1.0, 0.0),       // "Up"-Vektor
         60.0,                            // Field of View (FOV)
-        16f32 / 9f32, // Seitenverhältnis
+        16f32 / 9f32,                    // Seitenverhältnis
         0.1,                             // Near-Clipping
         100.0                            // Far-Clipping
     ));
@@ -125,8 +126,7 @@ unsafe fn process_mouse_input(camera: &mut Camera) {
     let delta_x = (cursor_pos.x - window_center_x) as f32;
     let delta_y = (cursor_pos.y - window_center_y) as f32;
 
-   camera.look_around(delta_x, delta_y);
-    // Cursor auf center zurücksetzen
+    camera.look_around(delta_x, delta_y);
     SetCursorPos(window_center_x, window_center_y);
 }
 
@@ -251,14 +251,12 @@ fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
                 WINDOW_HEIGHT,
             );
 
-            // Gib Option<&Texture> weiter, falls vorhanden
             let texture_option = polygon.texture.as_ref().map(|arc| arc.as_ref());
 
             Some((projected, texture_option, polygon.color))
         })
         .collect();
 
-    // Jetzt seriell ins framebuffer rendern
     for (projected, texture, color) in projected_polygons {
         framebuffer.draw_polygon(&projected, texture, color);
     }
@@ -280,14 +278,11 @@ fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
 
 
 unsafe fn setup_mouse(hwnd: HWND) {
-    // Hide the cursor
     ShowCursor(0);
 
-    // Confine the cursor to the window
     let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
     GetClientRect(hwnd, &mut rect);
 
-    // Center the cursor in the window
     let window_center_x = WINDOW_WIDTH as i32 / 2;
     let window_center_y = WINDOW_HEIGHT as i32 / 2;
     SetCursorPos(window_center_x, window_center_y);
@@ -304,53 +299,55 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
     bitmap_info
 }
 
+
 fn main() {
     unsafe{
         let hwnd = init_window();
 
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
+
+        let mut texture_input = String::new();
+        let texture_path = loop {
+            print!("Enter texture path: ");
+            io::stdout().flush().unwrap();
+            texture_input.clear();
+            io::stdin().read_line(&mut texture_input).expect("Failed to read input");
+            let trimmed = texture_input.trim();
+            if Path::new(trimmed).exists() {
+                break trimmed;
+            } else {
+                println!("Invalid path. Please try again.");
+            }
+        };
+
+        let mut obj_input = String::new();
+        let obj_path = loop {
+            print!("Enter obj file path: ");
+            io::stdout().flush().unwrap();
+            obj_input.clear();
+            io::stdin().read_line(&mut obj_input).expect("Failed to read input");
+            let trimmed = obj_input.trim();
+            if Path::new(trimmed).exists() {
+                break trimmed;
+            } else {
+                println!("Invalid path. Please try again.");
+            }
+        };
+
+        println!("Texture file path: {}", texture_path);
+        println!("OBJ file path: {}", obj_path);
+
+        let texture = Texture::from_file(texture_path);
+
         /*
-        // Prompt for the first file path
-        print!("Enter texture path: ");
-        io::stdout().flush().unwrap(); // Ensure prompt is shown
-        let mut first_path = String::new();
-        io::stdin()
-            .read_line(&mut first_path)
-            .expect("Failed to read input");
-        let first_path = first_path.trim(); // Remove newline
+        let texture = Texture::from_file(r#"capsule0.jpg"#);
 
-        // Prompt for the second file path
-        print!("Enter obj file path: ");
-        io::stdout().flush().unwrap();
-        let mut second_path = String::new();
-        io::stdin()
-            .read_line(&mut second_path)
-            .expect("Failed to read input");
-        let second_path = second_path.trim();
-
-        // Print to confirm
-        println!("First file path: {}", first_path);
-        println!("Second file path: {}", second_path);
-
-        let texture = Texture::from_file(first_path);
-        let obj_path = second_path;
-*/
-        let texture = Texture::from_file(r#"capsule0.jpg"#); //r#"C:\Users\tobis\Pictures\markus-ruehl.jpg"#
-
-        let obj_path = r#"capsule.obj"#; //r#"C:\Users\tobis\Documents\GitHub\rake\example.obj"#
-
-        // Lade die .obj-Daten
+        let obj_path = r#"capsule.obj"#;
+        */
         let (vertices, faces, tex) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
         let mut triangles = object::process_faces(&vertices, &faces, &tex);
-        let avg_vertices = triangles
-            .iter()
-            .map(|p| p.vertices.len())
-            .sum::<usize>() as f64
-            / triangles.len().max(1) as f64; // Avoid division by zero
-
-        println!("{}", avg_vertices);
 
         println!("Triangles: {:#?}", triangles.len());
 
@@ -359,30 +356,11 @@ fn main() {
             triangle.set_texture(shared_texture.clone());
         }
 
-        POLYGONS = Some(/*vec![{
-            let mut polygon = Polygon::new(0xFFFFFFFF); // Weißes Polygon
-            polygon.add_point(Point::new(-1.0, -1.0, 5.0));
-            polygon.add_point(Point::new(1.0, -1.0, 5.0));
-            polygon.add_point(Point::new(0.0, 1.0, 5.0));
-            polygon.add_texture(texture.clone());
-            polygon.set_tex_coords(vec![
-    (0.0, 1.0), // unten-links
-    (1.0, 1.0), // unten-rechts
-    (0.5, 0.0), // oben-rechts
-]
-            );
-            polygon
-        }]*/
-
-        triangles
-        );
-
+        POLYGONS = Some(triangles);
 
         let mut bitmap_info = create_bitmap_info(&framebuffer);
-
         let window_hdc = unsafe { get_window_hdc(hwnd) };
         let hdc: HDC = CreateCompatibleDC(window_hdc);
-
         let mut pixels: *mut u32 = null_mut();
         let mut hbitmap = CreateDIBSection(
             hdc,
@@ -392,18 +370,18 @@ fn main() {
             null_mut(),
             0,
         );
+
         const UPDATE_RATE: u64 = 60;
         const TIMESTEP: f32 = 1.0 / UPDATE_RATE as f32;
         let mut previous_time = Instant::now();
         let mut lag = 0.0;
-
         let mut msg: MSG = std::mem::zeroed();
+        let mut rect: RECT = std::mem::zeroed();
 
         setup_mouse(hwnd);
 
-        let mut rect: RECT = std::mem::zeroed();
-
         loop {
+
             if GetWindowRect(hwnd, &mut rect) != 0 {
                 let new_width = (rect.right - rect.left) as usize;
                 let new_height = (rect.bottom - rect.top) as usize;
@@ -415,22 +393,20 @@ fn main() {
 
                         framebuffer.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-                        // Clean up the old bitmap if necessary
                         if hbitmap != null_mut() {
                             DeleteObject(hbitmap as _);
                         }
 
-                        // Update bitmap info to new size
                         bitmap_info.bmiHeader.biWidth = WINDOW_WIDTH as i32;
-                        bitmap_info.bmiHeader.biHeight = -(WINDOW_HEIGHT as i32); // negative for top-down DIB
+                        bitmap_info.bmiHeader.biHeight = -(WINDOW_HEIGHT as i32);
 
-                        let mut new_pixels: *mut u32 = std::ptr::null_mut();
+                        let mut new_pixels: *mut u32 = null_mut();
                         hbitmap = CreateDIBSection(
                             hdc,
                             &bitmap_info,
                             0,
                             &mut new_pixels as *mut *mut u32 as *mut *mut _,
-                            std::ptr::null_mut(),
+                            null_mut(),
                             0,
                         );
 
