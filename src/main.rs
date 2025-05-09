@@ -358,7 +358,7 @@ fn main() {
         POLYGONS = Some(triangles);
 
         let mut bitmap_info = create_bitmap_info(&framebuffer);
-        let window_hdc = unsafe { get_window_hdc(hwnd) };
+        let window_hdc =  get_window_hdc(hwnd);
         let hdc: HDC = CreateCompatibleDC(window_hdc);
         let mut pixels: *mut u32 = null_mut();
         let mut hbitmap = CreateDIBSection(
@@ -386,7 +386,6 @@ fn main() {
                 let new_height = (rect.bottom - rect.top) as usize;
 
                 if new_width != WINDOW_WIDTH || new_height != WINDOW_HEIGHT {
-                    unsafe {
                         WINDOW_WIDTH = new_width;
                         WINDOW_HEIGHT = new_height;
 
@@ -414,7 +413,7 @@ fn main() {
                         }
 
                         pixels = new_pixels;
-                    }
+
                 }
             }
             let current_time = Instant::now();
@@ -442,11 +441,9 @@ fn main() {
             }
 
             // Zeichne alle Polygone in den framebuffer
-            unsafe {
                 if let Some(ref polygons) = POLYGONS {
                     render_scene(polygons, &mut framebuffer);
                 }
-            };
 
             // Zeichne den Frame in das Fenster
             draw_frame(&framebuffer, framebuffer.width, framebuffer.height, hbitmap, pixels, hdc, window_hdc);
