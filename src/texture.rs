@@ -1,4 +1,3 @@
-use std::error::Error;
 use image::{open, GenericImageView};
 
 #[derive(Debug, Clone)]

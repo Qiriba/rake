@@ -778,10 +778,10 @@ fn apply_gradient(framebuffer: &mut Framebuffer, dir_x: f32, dir_y: f32) {
                 let new_b = ((b as u16 * (255 - alpha as u16)) / 255) as u8;
 
                 // Combine into new color (keeping original alpha from framebuffer)
-                let new_color = ((current_color & 0xFF000000) |
+                let new_color = (current_color & 0xFF000000) |
                                  ((new_r as u32) << 16) |
                                  ((new_g as u32) << 8) |
-                                 (new_b as u32));
+                                 (new_b as u32);
 
                 framebuffer.pixels[index] = new_color;
             }
