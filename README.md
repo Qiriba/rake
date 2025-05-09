@@ -45,5 +45,6 @@ These are the commands to use the rake renderer:
 - `tab` - capture the mouse for looking around
 - `w`, `a`, `s`, `d` - move forward, left, backward, right
 - `space` - jump
-- `b` - toggle backface culling
+- `t` - toggle wireframe mode
+- `b` - toggle backface culling (only works in wireframe mode)
 - `ESC` - exit the program
