@@ -3,6 +3,8 @@
 rake allows you to view and render 3D objects in a simple window. 
 It uses the SDL2 library for graphics rendering and provides basic controls for navigating the scene.
 
+This is the Linux port. The Windows version can be found [here](https://github.com/Qiriba/rake/tree/master).
+
 ## Script
 
 If you do not want to worry about the prerequisites and flags, you ran simply run the rake.sh script.
