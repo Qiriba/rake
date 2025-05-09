@@ -6,7 +6,7 @@ use std::ptr;
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
-    pub pixels: Vec<u32>,   // Farbwerte in 0xRRGGBBAA)
+    pub pixels: Vec<u32>,   // Farbwerte in 0xRRGGBBAA
     pub z_buffer: Vec<f32>, // Tiefenwerte für jeden pixel, index gleich mit pixels
 }
 
@@ -27,6 +27,7 @@ impl Framebuffer {
         self.z_buffer
             .resize(self.width * self.height, f32::INFINITY);
     }
+
     ///Füllt den Framebuffer mit Schwarz und Z Werte von Unendlich
     pub(crate) fn clear(&mut self) {
         unsafe {
@@ -110,7 +111,6 @@ impl Framebuffer {
             }
         }
 
-        // Edge function to calculate barycentric weights
         fn edge_function(a: &Point2D, b: &Point2D, p: &Point2D) -> i32 {
             ((p.x - a.x) as i32 * (b.y - a.y) as i32) - ((p.y - a.y) as i32 * (b.x - a.x) as i32)
         }
@@ -134,8 +134,7 @@ impl Framebuffer {
         let max_x = v0.x.max(v1.x).max(v2.x).min(self.width as f32) as usize;
         let min_y = v0.y.min(v1.y).min(v2.y).max(0.0) as usize;
         let max_y = v0.y.max(v1.y).max(v2.y).min(self.height as f32) as usize;
-        // Vorberechnung der Determinante für Dreieckskalierung
-        let det = (v1.x - v0.x) * (v2.y - v0.y) - (v2.x - v0.x) * (v1.y - v0.y);
+        let det = (v1.x - v0.x) * (v2.y - v0.y) - (v2.x - v0.x) * (v1.y - v0.y);        // Vorberechnung der Determinante für Dreieckskalierung
 
         if det.abs() < f32::EPSILON {
             return; // Degeneriertes Dreieck
@@ -203,10 +202,10 @@ fn triangulate_ear_clipping(
     (Point2D, (f32, f32)),
     (Point2D, (f32, f32)),
 )> {
-    let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
-    let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
+    let mut vertices = polygon.vertices.clone();
+    let mut uv_coords = polygon.uv_coords.clone();
     let mut triangles = Vec::new();
-    // Rechteck/Quadrat: Sonderfall – einfache Zwei-Dreiecks-Zerlegung
+    // Quadrat Sonderfall –> einfache Zwei-Dreiecks-Zerlegung
     if vertices.len() == 4 {
         return vec![
             (
@@ -224,13 +223,10 @@ fn triangulate_ear_clipping(
 
     ensure_ccw(&mut vertices);
 
-    // Starte die Triangulation
     while vertices.len() > 3 {
         let mut ear_found = false;
 
-        // Finde ein "Ohr" im Polygon
         for i in 0..vertices.len() {
-            // Vorheriger, aktueller und nächster Punkt
             let prev = vertices[(i + vertices.len() - 1) % vertices.len()];
             let prev_uv = uv_coords[(i + uv_coords.len() - 1) % uv_coords.len()];
             let curr = vertices[i];
@@ -238,12 +234,9 @@ fn triangulate_ear_clipping(
             let next = vertices[(i + 1) % vertices.len()];
             let next_uv = uv_coords[(i + 1) % uv_coords.len()];
 
-            // Prüfe, ob ein Ohr gefunden wurde
             if is_ear(prev, curr, next, &vertices) {
-                // Füge das Ohr als ein Dreieck hinzu
                 triangles.push(((prev, prev_uv), (curr, curr_uv), (next, next_uv)));
 
-                // Entferne den aktuellen Punkt und seine UVs aus der Liste
                 vertices.remove(i);
                 uv_coords.remove(i);
 
@@ -252,14 +245,12 @@ fn triangulate_ear_clipping(
             }
         }
 
-        // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich
-        // ungültig oder zu komplex.
+        // Wenn nach einem Durchlauf kein Ohr gefunden wurde, ist das Polygon wahrscheinlich ungültig oder zu komplex.
         if !ear_found {
             panic!("Triangulation fehlgeschlagen: Ungültiges oder zu komplexes Polygon!");
         }
     }
 
-    // Füge das letzte verbleibende Dreieck hinzu (wenn noch genau 3 Punkte übrig sind)
     if vertices.len() == 3 {
         triangles.push((
             (vertices[0], uv_coords[0]),
@@ -274,7 +265,7 @@ fn triangulate_ear_clipping(
 #[inline(always)]
 fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> bool {
     if !is_ccw(prev, curr, next) {
-        return false; // Das Dreieck ist nicht gegen den Uhrzeigersinn
+        return false;
     }
 
     // Prüfe, ob ein anderer Punkt innerhalb des Dreiecks liegt
@@ -291,7 +282,7 @@ fn is_ccw(p1: Point2D, p2: Point2D, p3: Point2D) -> bool {
     let cross_product = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
 
     if cross_product > 0.0 {
-        true // Gegen den Uhrzeigersinn
+        true
     } else {
         false
     }
@@ -306,7 +297,7 @@ fn is_polygon_ccw(vertices: &[Point2D]) -> bool {
         sum += (next.x - current.x) * (next.y + current.y);
     }
     if sum > 0.0 {
-        true // Polygon in Gegen-Uhrzeigersinn
+        true
     } else {
         false
     }
