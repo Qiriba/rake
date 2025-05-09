@@ -35,32 +35,6 @@ impl Polygon {
     pub fn add_point(&mut self, point: Point) {
         self.vertices.push(point);
     }
-
-    pub fn transform_full(
-        &mut self,
-        translation: (f32, f32, f32), // Verschiebung in (x, y, z)
-        rotation: (f32, f32, f32),    // Rotation in (x, y, z) [in Radiant]
-        scale: (f32, f32, f32),       // Skalierung in (x, y, z)
-    ) {
-        // Erzeuge die Transformationsmatrizen
-        let translation_matrix = Matrix4x4::translate(translation.0, translation.1, translation.2);
-        let rotation_x_matrix = Matrix4x4::rotate_x(rotation.0);
-        let rotation_y_matrix = Matrix4x4::rotate_y(rotation.1);
-        let rotation_z_matrix = Matrix4x4::rotate_z(rotation.2);
-        let scaling_matrix = Matrix4x4::scale(scale.0, scale.1, scale.2);
-
-        // Kombiniere alle Matrizen: Skalieren -> Rotieren (X -> Y -> Z) -> Verschieben
-        let combined_matrix = translation_matrix
-            .multiply(&rotation_z_matrix)
-            .multiply(&rotation_y_matrix)
-            .multiply(&rotation_x_matrix)
-            .multiply(&scaling_matrix);
-
-        // Wende die kombinierte Matrix auf jedes der Vertexe an
-        for vertex in &mut self.vertices {
-            *vertex = combined_matrix.multiply_point(vertex);
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
