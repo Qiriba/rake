@@ -1,10 +1,12 @@
+use crate::Polygon;
+use crate::point::Point;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use crate::point::Point;
-use crate::Polygon;
 
-pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, Vec<usize>)>, Vec<(f32, f32)>), String> {
+pub fn parse_obj_file(
+    file_path: &str,
+) -> Result<(Vec<Point>, Vec<(Vec<usize>, Vec<usize>)>, Vec<(f32, f32)>), String> {
     let file = File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
     let reader = BufReader::new(file);
 
@@ -13,7 +15,10 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
     let mut faces = Vec::new();
 
     for line in reader.lines() {
-        let line = line.map_err(|e| format!("Failed to read line: {}", e))?.trim().to_string();
+        let line = line
+            .map_err(|e| format!("Failed to read line: {}", e))?
+            .trim()
+            .to_string();
 
         if line.starts_with("v ") {
             let coords: Vec<f32> = line[2..]
@@ -37,8 +42,14 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
 
             for part in line[2..].split_whitespace() {
                 let mut split = part.split('/');
-                let v_idx = split.next().and_then(|s| s.parse::<usize>().ok()).map(|i| i - 1);
-                let t_idx = split.next().and_then(|s| s.parse::<usize>().ok()).map(|i| i - 1);
+                let v_idx = split
+                    .next()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .map(|i| i - 1);
+                let t_idx = split
+                    .next()
+                    .and_then(|s| s.parse::<usize>().ok())
+                    .map(|i| i - 1);
 
                 if let (Some(v), Some(t)) = (v_idx, t_idx) {
                     v_indices.push(v);
@@ -62,7 +73,7 @@ pub fn parse_obj_file(file_path: &str) -> Result<(Vec<Point>, Vec<(Vec<usize>, V
 pub fn process_faces(
     vertices: &Vec<Point>,
     faces: &Vec<(Vec<usize>, Vec<usize>)>,
-    tex_coords: &Vec<(f32, f32)>
+    tex_coords: &Vec<(f32, f32)>,
 ) -> Vec<Polygon> {
     faces
         .par_iter()

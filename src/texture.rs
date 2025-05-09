@@ -1,5 +1,4 @@
-use image::{open, GenericImageView};
-
+use image::{GenericImageView, open};
 
 #[derive(Debug, Clone)]
 pub struct Texture {

@@ -1,27 +1,26 @@
-use crate::{point::cross_product, point::dot_product, point::normalize, Matrix4x4, Point};
+use crate::{Matrix4x4, Point, point::cross_product, point::dot_product, point::normalize};
 
 #[derive(Debug)]
 pub struct Camera {
-    pub position: Point,         // Position der Kamera
-    pub forward: Point,          // Richtung, in die die Kamera schaut
-    pub up: Point,               // "Up"-Vektor der Kamera
-    pub fov: f32,                // Field of View (FOV), in Grad
-    pub aspect_ratio: f32,       // Breite / Höhe des Fensters
-    pub near: f32,               // Near-Clipping-Plane
-    pub far: f32,                // Far-Clipping-Plane
+    pub position: Point,   // Position der Kamera
+    pub forward: Point,    // Richtung, in die die Kamera schaut
+    pub up: Point,         // "Up"-Vektor der Kamera
+    pub fov: f32,          // Field of View (FOV), in Grad
+    pub aspect_ratio: f32, // Breite / Höhe des Fensters
+    pub near: f32,         // Near-Clipping-Plane
+    pub far: f32,          // Far-Clipping-Plane
 
     // New fields for movement
-    pub velocity: Point,         // Current velocity of the camera
-    pub acceleration: f32,       // Acceleration for forward/backward/strafe
-    pub gravity: f32,            // Gravity applied during jumps
-    pub vertical_velocity: f32,  // Velocity for jumping
-    pub is_jumping: bool,        // Whether the camera is currently jumping
+    pub velocity: Point,        // Current velocity of the camera
+    pub acceleration: f32,      // Acceleration for forward/backward/strafe
+    pub gravity: f32,           // Gravity applied during jumps
+    pub vertical_velocity: f32, // Velocity for jumping
+    pub is_jumping: bool,       // Whether the camera is currently jumping
 
     // Look
-    pub look_sensitivity: f32,      // Sensitivity for looking around
-    pub yaw: f32,                   // Horizontal rotation
-    pub pitch: f32,                 // Vertical rotation
-
+    pub look_sensitivity: f32, // Sensitivity for looking around
+    pub yaw: f32,              // Horizontal rotation
+    pub pitch: f32,            // Vertical rotation
 }
 
 impl Camera {
@@ -45,7 +44,7 @@ impl Camera {
 
             // Movement
             velocity: Point::new(0.0, 0.0, 0.0),
-            acceleration: 1.0,      // Increased movement speed
+            acceleration: 1.0, // Increased movement speed
             gravity: 80.0,
             vertical_velocity: 0.0,
             is_jumping: false,
@@ -56,8 +55,6 @@ impl Camera {
             pitch: 0.0,
         }
     }
-
-
 
     // Funktion zur Erstellung einer View-Matrix (notwendige Transformation)
     pub fn view_matrix(&self) -> Matrix4x4 {
@@ -87,7 +84,12 @@ impl Camera {
                 [1.0 / (self.aspect_ratio * fov_rad), 0.0, 0.0, 0.0],
                 [0.0, 1.0 / fov_rad, 0.0, 0.0],
                 [0.0, 0.0, self.far / (self.far - self.near), 1.0],
-                [0.0, 0.0, (-self.far * self.near) / (self.far - self.near), 0.0],
+                [
+                    0.0,
+                    0.0,
+                    (-self.far * self.near) / (self.far - self.near),
+                    0.0,
+                ],
             ],
         }
     }
@@ -129,7 +131,6 @@ impl Camera {
         self.forward = rotation_matrix.multiply_point(&self.forward).normalize();
     }
 
-
     pub fn update_forward(&mut self) {
         // Calculate forward vector
         self.forward.x = self.yaw.cos() * self.pitch.cos();
@@ -152,8 +153,6 @@ impl Camera {
         self.up = right.cross(self.forward).normalize();
     }
 
-
-
     pub fn look_around(&mut self, delta_x: f32, delta_y: f32) {
         // Skip updates if there's no input
         if delta_x.abs() < 1e-6 && delta_y.abs() < 1e-6 {
@@ -165,24 +164,31 @@ impl Camera {
         self.pitch += delta_y * self.look_sensitivity;
 
         // Clamp the pitch to prevent looking too far up or down
-        self.pitch = self.pitch.clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
+        self.pitch = self
+            .pitch
+            .clamp(-std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
 
         // Recalculate forward direction
         self.update_forward();
     }
 
-    pub fn update_movement(&mut self, delta_time: f32, keys: &[bool; 256], mouse_delta: (f32, f32)) {
+    pub fn update_movement(
+        &mut self,
+        delta_time: f32,
+        keys: &[bool; 256],
+        mouse_delta: (f32, f32),
+    ) {
         // Constants for movement and physics
         // Constants/configurations
-        let sv_maxspeed = 320.0;           // Max speed on ground
-        let sv_air_maxspeed = 950.0;      // Max speed while air strafing
-        let sv_accelerate = 5.5;          // Ground acceleration
-        let sv_air_accelerate = 12.0;     // Air strafing acceleration
-        let sv_friction = 0.6;            // Ground friction
-        let jump_strength = 27.0;        // Jump power
-        let air_drag = 0.01;              // Air drag to slow player slightly in air
-        let diagonal_speed_scale = 1.1;  // Slightly faster diagonal movement
-        let strafe_boost_factor = 0.02;  // Small boost for strafing on the ground
+        let sv_maxspeed = 320.0; // Max speed on ground
+        let sv_air_maxspeed = 950.0; // Max speed while air strafing
+        let sv_accelerate = 5.5; // Ground acceleration
+        let sv_air_accelerate = 12.0; // Air strafing acceleration
+        let sv_friction = 0.6; // Ground friction
+        let jump_strength = 27.0; // Jump power
+        let air_drag = 0.01; // Air drag to slow player slightly in air
+        let diagonal_speed_scale = 1.1; // Slightly faster diagonal movement
+        let strafe_boost_factor = 0.02; // Small boost for strafing on the ground
 
         // Get movement direction from keys (W/A/S/D)
         let mut move_dir = Point::new(0.0, 0.0, 0.0);
@@ -190,10 +196,10 @@ impl Camera {
             move_dir = move_dir - self.forward;
         }
         if keys['S' as usize] {
-            move_dir =  move_dir + self.forward;
+            move_dir = move_dir + self.forward;
         }
         if keys['A' as usize] {
-            move_dir =  move_dir - self.forward.cross(self.up); // Left strafe
+            move_dir = move_dir - self.forward.cross(self.up); // Left strafe
         }
         if keys['D' as usize] {
             move_dir = move_dir + self.forward.cross(self.up); // Right strafe
@@ -210,7 +216,7 @@ impl Camera {
                 // Apply ground movement
                 let wish_vel = move_dir * sv_maxspeed * diagonal_speed_scale;
                 let accel = sv_accelerate * delta_time;
-                self.velocity = self.velocity + (wish_vel - self.velocity)* accel * delta_time;
+                self.velocity = self.velocity + (wish_vel - self.velocity) * accel * delta_time;
 
                 // Add a slight boost for strafing
                 if keys['A' as usize] || keys['D' as usize] {
@@ -229,7 +235,6 @@ impl Camera {
             if keys['V' as usize] {
                 self.vertical_velocity = jump_strength; // Apply vertical velocity
             }
-
         } else {
             // Air strafing logic
             if move_dir.magnitude() > 0.0 {
@@ -264,15 +269,10 @@ impl Camera {
         self.position.x += self.velocity.x * delta_time;
         self.position.z += self.velocity.z * delta_time;
 
-
         self.look_around(mouse_delta.0, mouse_delta.1);
-
     }
 
     fn is_on_ground(&self) -> bool {
         self.position.y <= 0.0
     }
-
-
-
 }

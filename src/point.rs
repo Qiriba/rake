@@ -1,16 +1,15 @@
-
 /// A 3D point.
 #[derive(Debug, Clone, Copy)]
 pub struct Point {
     pub x: f32,
     pub y: f32,
-    pub z: f32
+    pub z: f32,
 }
 use std::ops::{Add, Mul, Sub};
 
 impl Point {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Point { x, y , z}
+        Point { x, y, z }
     }
     pub fn dot(self, other: Point) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
@@ -89,8 +88,6 @@ impl Sub for Point {
     }
 }
 
-
-
 #[derive(Copy, Clone, Debug)]
 pub struct Point2D {
     pub x: f32,
@@ -100,9 +97,7 @@ pub struct Point2D {
 
 impl PartialEq for Point2D {
     fn eq(&self, other: &Self) -> bool {
-        self.x == other.x &&
-            self.y == other.y &&
-            (self.z - other.z).abs() < f32::EPSILON
+        self.x == other.x && self.y == other.y && (self.z - other.z).abs() < f32::EPSILON
     }
 }
 
@@ -125,12 +120,11 @@ pub fn dot_product(a: Point, b: Point) -> f32 {
     a.x * b.x + a.y * b.y + a.z * b.z
 }
 
-
 #[inline(always)]
 pub fn snap_to_pixel(point: Point2D) -> Point2D {
     Point2D {
         x: point.x.round(),
         y: point.y.round(),
-        z: point.z
+        z: point.z,
     }
 }

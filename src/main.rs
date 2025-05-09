@@ -2,7 +2,6 @@ mod point;
 pub use point::Point;
 pub use point::Point2D;
 
-
 mod matrix4x4;
 pub use matrix4x4::Matrix4x4;
 
@@ -14,33 +13,40 @@ mod camera;
 pub use camera::Camera;
 
 mod framebuffer;
-mod texture;
 mod object;
+mod texture;
 
 pub use framebuffer::Framebuffer;
 
 extern crate winapi;
-use std::ptr::null_mut;
+use crate::texture::Texture;
+use lazy_static::lazy_static;
+use rayon::prelude::*;
 use std::ffi::CString;
 use std::io;
 use std::io::Write;
 use std::path::Path;
+use std::ptr::null_mut;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
-use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
-use winapi::um::wingdi::{BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteObject, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, SRCCOPY};
-use winapi::um::winuser::{CreateWindowExA, DefWindowProcA, DispatchMessageW, GetClientRect, GetCursorPos, GetWindowRect, PeekMessageW, PostQuitMessage, RegisterClassA, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, PM_REMOVE, SW_SHOW, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE};
-use winapi::um::libloaderapi::GetModuleHandleA;
 use winapi::ctypes::c_int;
-use lazy_static::lazy_static;
-use crate::texture::Texture;
-use rayon::prelude::*;
+use winapi::shared::minwindef::{LPARAM, LRESULT, UINT, WPARAM};
+use winapi::shared::windef::{HBITMAP, HDC, HWND, POINT, RECT};
+use winapi::um::libloaderapi::GetModuleHandleA;
+use winapi::um::wingdi::{
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection,
+    DeleteObject, SRCCOPY, SelectObject,
+};
+use winapi::um::winuser::{
+    CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateWindowExA, DefWindowProcA, DispatchMessageW,
+    GetClientRect, GetCursorPos, GetWindowRect, MSG, PM_REMOVE, PeekMessageW, PostQuitMessage,
+    RegisterClassA, SW_SHOW, SetCursorPos, ShowCursor, ShowWindow, TranslateMessage, UpdateWindow,
+    WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WNDCLASSA, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+};
 
 static mut WINDOW_WIDTH: usize = 800;
 static mut WINDOW_HEIGHT: usize = 600;
 static mut POLYGONS: Option<Vec<Polygon>> = None;
-
 
 lazy_static! {
     static ref CAMERA: Mutex<Camera> = Mutex::new(Camera::new(
@@ -84,7 +90,7 @@ unsafe extern "system" fn window_proc(
                 let mut keys = KEYS.lock().unwrap();
                 if key_code == b'L' as usize {
                     keys[key_code] = !keys[key_code];
-                }else {
+                } else {
                     keys[key_code] = true; // Taste als gedrückt markieren
                 }
             }
@@ -104,7 +110,6 @@ unsafe extern "system" fn window_proc(
 
         _ => DefWindowProcA(hwnd, msg, w_param, l_param),
     };
-
 }
 
 unsafe fn handle_input() {
@@ -137,15 +142,15 @@ fn init_window() -> HWND {
         let h_instance = GetModuleHandleA(null_mut());
 
         let wnd_class = WNDCLASSA {
-            style: CS_HREDRAW | CS_VREDRAW,     // Stil (neu zeichnen bei Fensterbreiten-/Höhenänderung)
-            lpfnWndProc: Some(window_proc),    // Zeiger auf die Windows-Prozedur
-            cbClsExtra: 0,                     // Keine zusätzlichen Bytes in der Fensterklasse
-            cbWndExtra: 0,                     // Keine zusätzlichen Bytes im Fenster
-            hInstance: h_instance,             // Anwendungsinstanz-Handle
-            hIcon: null_mut(),                 // Standardsymbol
-            hCursor: null_mut(),               // Standard-Cursor
-            hbrBackground: (1 + 1) as _,       // Hintergrundfarbe (Weiß)
-            lpszMenuName: null_mut(),          // Kein Menü
+            style: CS_HREDRAW | CS_VREDRAW, // Stil (neu zeichnen bei Fensterbreiten-/Höhenänderung)
+            lpfnWndProc: Some(window_proc), // Zeiger auf die Windows-Prozedur
+            cbClsExtra: 0,                  // Keine zusätzlichen Bytes in der Fensterklasse
+            cbWndExtra: 0,                  // Keine zusätzlichen Bytes im Fenster
+            hInstance: h_instance,          // Anwendungsinstanz-Handle
+            hIcon: null_mut(),              // Standardsymbol
+            hCursor: null_mut(),            // Standard-Cursor
+            hbrBackground: (1 + 1) as _,    // Hintergrundfarbe (Weiß)
+            lpszMenuName: null_mut(),       // Kein Menü
             lpszClassName: class_name.as_ptr(), // Klassenname
         };
 
@@ -154,18 +159,18 @@ fn init_window() -> HWND {
         }
 
         let hwnd = CreateWindowExA(
-            0,                                   // Keine zusätzlichen Fensterstile
-            class_name.as_ptr(),                 // Klassenname
+            0,                                      // Keine zusätzlichen Fensterstile
+            class_name.as_ptr(),                    // Klassenname
             CString::new("rake").unwrap().as_ptr(), // Fenstertitel
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,    // Standardfensterstil
-            CW_USEDEFAULT,                       // Standard-X-Position
-            CW_USEDEFAULT,                       // Standard-Y-Position
-            WINDOW_WIDTH as c_int,               // Fensterbreite
-            WINDOW_HEIGHT as c_int,              // Fensterhöhe
-            null_mut(),                          // Kein übergeordnetes Fenster
-            null_mut(),                          // Kein Menü
-            h_instance,                          // Anwendungsinstanz-Handle
-            null_mut(),                          // Keine zusätzlichen Anwendungen
+            WS_OVERLAPPEDWINDOW | WS_VISIBLE,       // Standardfensterstil
+            CW_USEDEFAULT,                          // Standard-X-Position
+            CW_USEDEFAULT,                          // Standard-Y-Position
+            WINDOW_WIDTH as c_int,                  // Fensterbreite
+            WINDOW_HEIGHT as c_int,                 // Fensterhöhe
+            null_mut(),                             // Kein übergeordnetes Fenster
+            null_mut(),                             // Kein Menü
+            h_instance,                             // Anwendungsinstanz-Handle
+            null_mut(),                             // Keine zusätzlichen Anwendungen
         );
 
         if hwnd.is_null() {
@@ -191,14 +196,20 @@ unsafe fn get_window_hdc(hwnd: HWND) -> HDC {
     hdc
 }
 
-unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbitmap: HBITMAP, pixels: *mut u32, hdc: HDC, window_hdc: HDC) {
+unsafe fn draw_frame(
+    framebuffer: &Framebuffer,
+    width: usize,
+    height: usize,
+    hbitmap: HBITMAP,
+    pixels: *mut u32,
+    hdc: HDC,
+    window_hdc: HDC,
+) {
     unsafe {
-        std::slice::from_raw_parts_mut(pixels, width * height)
-            .copy_from_slice(&framebuffer.pixels);
+        std::slice::from_raw_parts_mut(pixels, width * height).copy_from_slice(&framebuffer.pixels);
     }
 
     let old_object = SelectObject(hdc, hbitmap as *mut _);
-
 
     BitBlt(
         window_hdc,
@@ -212,20 +223,16 @@ unsafe fn draw_frame(framebuffer: &Framebuffer, width: usize, height: usize, hbi
         SRCCOPY,
     );
 
-
-
     // Ressourcenfreigabe
     SelectObject(hdc, old_object);
 }
 
-
- fn update_scene(delta_time: f32) {
-
+fn update_scene(delta_time: f32) {
     let keys = KEYS.lock().unwrap();
     let mut camera = CAMERA.lock().unwrap();
-     if !keys['L' as usize] {
-         camera.update_movement(delta_time, &*keys, (0.0, 0.0));
-     }
+    if !keys['L' as usize] {
+        camera.update_movement(delta_time, &*keys, (0.0, 0.0));
+    }
 }
 
 fn render_scene(polygons: &Vec<Polygon>, framebuffer: &mut Framebuffer) {
@@ -266,20 +273,22 @@ fn is_backface(polygon: &Polygon, camera_position: Point) -> bool {
     }
 
     let edge1 = polygon.vertices[1] - polygon.vertices[0];
-    let edge2 = polygon.vertices[2]  - polygon.vertices[0] ;
+    let edge2 = polygon.vertices[2] - polygon.vertices[0];
     let normal = edge1.cross(edge2).normalize();
-
-
 
     let view_direction = (camera_position - polygon.vertices[0]).normalize();
     normal.dot(view_direction) < 0.0
 }
 
-
 unsafe fn setup_mouse(hwnd: HWND) {
     ShowCursor(0);
 
-    let mut rect = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     GetClientRect(hwnd, &mut rect);
 
     let window_center_x = WINDOW_WIDTH as i32 / 2;
@@ -298,14 +307,13 @@ unsafe fn create_bitmap_info(framebuffer: &Framebuffer) -> BITMAPINFO {
     bitmap_info
 }
 
-
 fn main() {
-    unsafe{
+    unsafe {
         let hwnd = init_window();
 
-        let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
+        let mut framebuffer = Framebuffer::new(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-/*
+        /*
         let mut texture_input = String::new();
         let texture_path = loop {
             print!("Enter texture path: ");
@@ -344,7 +352,8 @@ fn main() {
 
         let obj_path = r#"capsule.obj"#;
 
-        let (vertices, faces, tex) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
+        let (vertices, faces, tex) =
+            object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
         let mut triangles = object::process_faces(&vertices, &faces, &tex);
 
@@ -358,7 +367,7 @@ fn main() {
         POLYGONS = Some(triangles);
 
         let mut bitmap_info = create_bitmap_info(&framebuffer);
-        let window_hdc =  get_window_hdc(hwnd);
+        let window_hdc = get_window_hdc(hwnd);
         let hdc: HDC = CreateCompatibleDC(window_hdc);
         let mut pixels: *mut u32 = null_mut();
         let mut hbitmap = CreateDIBSection(
@@ -380,40 +389,38 @@ fn main() {
         setup_mouse(hwnd);
 
         loop {
-
             if GetWindowRect(hwnd, &mut rect) != 0 {
                 let new_width = (rect.right - rect.left) as usize;
                 let new_height = (rect.bottom - rect.top) as usize;
 
                 if new_width != WINDOW_WIDTH || new_height != WINDOW_HEIGHT {
-                        WINDOW_WIDTH = new_width;
-                        WINDOW_HEIGHT = new_height;
+                    WINDOW_WIDTH = new_width;
+                    WINDOW_HEIGHT = new_height;
 
-                        framebuffer.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
+                    framebuffer.resize(WINDOW_WIDTH, WINDOW_HEIGHT);
 
-                        if hbitmap != null_mut() {
-                            DeleteObject(hbitmap as _);
-                        }
+                    if hbitmap != null_mut() {
+                        DeleteObject(hbitmap as _);
+                    }
 
-                        bitmap_info.bmiHeader.biWidth = WINDOW_WIDTH as i32;
-                        bitmap_info.bmiHeader.biHeight = -(WINDOW_HEIGHT as i32);
+                    bitmap_info.bmiHeader.biWidth = WINDOW_WIDTH as i32;
+                    bitmap_info.bmiHeader.biHeight = -(WINDOW_HEIGHT as i32);
 
-                        let mut new_pixels: *mut u32 = null_mut();
-                        hbitmap = CreateDIBSection(
-                            hdc,
-                            &bitmap_info,
-                            0,
-                            &mut new_pixels as *mut *mut u32 as *mut *mut _,
-                            null_mut(),
-                            0,
-                        );
+                    let mut new_pixels: *mut u32 = null_mut();
+                    hbitmap = CreateDIBSection(
+                        hdc,
+                        &bitmap_info,
+                        0,
+                        &mut new_pixels as *mut *mut u32 as *mut *mut _,
+                        null_mut(),
+                        0,
+                    );
 
-                        if hbitmap.is_null() || new_pixels.is_null() {
-                            panic!("Failed to recreate DIB section after window resize.");
-                        }
+                    if hbitmap.is_null() || new_pixels.is_null() {
+                        panic!("Failed to recreate DIB section after window resize.");
+                    }
 
-                        pixels = new_pixels;
-
+                    pixels = new_pixels;
                 }
             }
             let current_time = Instant::now();
@@ -421,7 +428,6 @@ fn main() {
             previous_time = current_time;
 
             lag += delta_time;
-
 
             //Nachrichten abarbeiten ohne zu blockieren
             //User Input etc
@@ -441,12 +447,20 @@ fn main() {
             }
 
             // Zeichne alle Polygone in den framebuffer
-                if let Some(ref polygons) = POLYGONS {
-                    render_scene(polygons, &mut framebuffer);
-                }
+            if let Some(ref polygons) = POLYGONS {
+                render_scene(polygons, &mut framebuffer);
+            }
 
             // Zeichne den Frame in das Fenster
-            draw_frame(&framebuffer, framebuffer.width, framebuffer.height, hbitmap, pixels, hdc, window_hdc);
+            draw_frame(
+                &framebuffer,
+                framebuffer.width,
+                framebuffer.height,
+                hbitmap,
+                pixels,
+                hdc,
+                window_hdc,
+            );
         }
     }
 }

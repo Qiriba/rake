@@ -69,7 +69,6 @@ impl Matrix4x4 {
             + self.data[2][3] * point.z
             + self.data[3][3];
 
-
         // Perspektivische Division, wenn w != 1.0
         if w != 0.0 {
             Point {
@@ -80,7 +79,6 @@ impl Matrix4x4 {
         } else {
             Point { x, y, z }
         }
-
     }
 
     pub fn multiply(&self, other: &Matrix4x4) -> Matrix4x4 {
@@ -140,5 +138,4 @@ impl Matrix4x4 {
         matrix.data[2][2] = cos_theta;
         matrix
     }
-
 }

@@ -1,12 +1,12 @@
-use std::ptr;
-use crate::{point, Point2D, Polygon2D};
 use crate::texture::Texture;
+use crate::{Point2D, Polygon2D, point};
+use std::ptr;
 
 #[derive(Clone)]
 pub struct Framebuffer {
     pub width: usize,
     pub height: usize,
-    pub pixels: Vec<u32>,  // Farbwerte in 0xRRGGBBAA)
+    pub pixels: Vec<u32>,   // Farbwerte in 0xRRGGBBAA)
     pub z_buffer: Vec<f32>, // Tiefenwerte für jeden pixel, index gleich mit pixels
 }
 
@@ -24,7 +24,8 @@ impl Framebuffer {
         self.width = width;
         self.height = height;
         self.pixels.resize(self.width * self.height, 0);
-        self.z_buffer.resize(self.width * self.height, f32::INFINITY);
+        self.z_buffer
+            .resize(self.width * self.height, f32::INFINITY);
     }
     ///Füllt den Framebuffer mit Schwarz und Z Werte von Unendlich
     pub(crate) fn clear(&mut self) {
@@ -42,7 +43,12 @@ impl Framebuffer {
     }
 
     ///Erstellt Dreiecke aus dem gegebenen Polygon und rasterisiert diese in den Frambuffer, mit oder ohne Textur
-    pub(crate) fn draw_polygon(&mut self, polygon: &Polygon2D, texture: Option<&Texture>, color: u32) {
+    pub(crate) fn draw_polygon(
+        &mut self,
+        polygon: &Polygon2D,
+        texture: Option<&Texture>,
+        color: u32,
+    ) {
         if let Some(texture) = texture {
             // Texturiertes Rendering
             let triangles = triangulate_ear_clipping(polygon);
@@ -58,7 +64,6 @@ impl Framebuffer {
         }
     }
 
-
     fn rasterize_triangle(&mut self, v0: Point2D, v1: Point2D, v2: Point2D, color: u32) {
         let v0 = point::snap_to_pixel(v0);
         let v1 = point::snap_to_pixel(v1);
@@ -69,7 +74,6 @@ impl Framebuffer {
         let max_x = v0.x.max(v1.x).max(v2.x).min((self.width - 1) as f32) as i32;
         let min_y = v0.y.min(v1.y).min(v2.y).max(0.0) as i32;
         let max_y = v0.y.max(v1.y).max(v2.y).min((self.height - 1) as f32) as i32;
-
 
         // fläche des dreiecks berechnen (für barycentric coordinate normalization)
         let triangle_area = edge_function(&v0, &v1, &v2) as f32;
@@ -107,7 +111,7 @@ impl Framebuffer {
         }
 
         // Edge function to calculate barycentric weights
-        fn edge_function (a: &Point2D, b: &Point2D, p: &Point2D) -> i32 {
+        fn edge_function(a: &Point2D, b: &Point2D, p: &Point2D) -> i32 {
             ((p.x - a.x) as i32 * (b.y - a.y) as i32) - ((p.y - a.y) as i32 * (b.x - a.x) as i32)
         }
     }
@@ -122,7 +126,6 @@ impl Framebuffer {
         uv2: (f32, f32),
         texture: &Texture,
     ) {
-
         let tex_width = texture.width as f32;
         let tex_height = texture.height as f32;
 
@@ -185,18 +188,21 @@ impl Framebuffer {
     }
 }
 
-
 #[inline(always)]
 fn rgba_to_u32(rgba: [u8; 4]) -> u32 {
-        ((rgba[3] as u32) << 24) | // Alpha
+    ((rgba[3] as u32) << 24) | // Alpha
         ((rgba[0] as u32) << 16) | // Rot
         ((rgba[1] as u32) << 8)  | // Grün
-        (rgba[2] as u32)          // Blau
+        (rgba[2] as u32) // Blau
 }
 
 fn triangulate_ear_clipping(
     polygon: &Polygon2D,
-) -> Vec<((Point2D, (f32, f32)), (Point2D, (f32, f32)), (Point2D, (f32, f32)))> {
+) -> Vec<(
+    (Point2D, (f32, f32)),
+    (Point2D, (f32, f32)),
+    (Point2D, (f32, f32)),
+)> {
     let mut vertices = polygon.vertices.clone(); // Kopiere die Punkte des Polygons
     let mut uv_coords = polygon.uv_coords.clone(); // Kopiere die UV-Koordinaten des Polygons
     let mut triangles = Vec::new();
@@ -235,11 +241,7 @@ fn triangulate_ear_clipping(
             // Prüfe, ob ein Ohr gefunden wurde
             if is_ear(prev, curr, next, &vertices) {
                 // Füge das Ohr als ein Dreieck hinzu
-                triangles.push((
-                    (prev, prev_uv),
-                    (curr, curr_uv),
-                    (next, next_uv),
-                ));
+                triangles.push(((prev, prev_uv), (curr, curr_uv), (next, next_uv)));
 
                 // Entferne den aktuellen Punkt und seine UVs aus der Liste
                 vertices.remove(i);
@@ -286,7 +288,6 @@ fn is_ear(prev: Point2D, curr: Point2D, next: Point2D, vertices: &[Point2D]) -> 
 
 #[inline(always)]
 fn is_ccw(p1: Point2D, p2: Point2D, p3: Point2D) -> bool {
-
     let cross_product = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
 
     if cross_product > 0.0 {
@@ -331,5 +332,6 @@ fn is_point_in_triangle(p: Point2D, a: Point2D, b: Point2D, c: Point2D) -> bool 
     let has_neg = (d1 < 0.0) || (d2 < 0.0) || (d3 < 0.0);
     let has_pos = (d1 > 0.0) || (d2 > 0.0) || (d3 > 0.0);
 
-    !(has_neg && has_pos) || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
+    !(has_neg && has_pos)
+        || (d1.abs() < f32::EPSILON || d2.abs() < f32::EPSILON || d3.abs() < f32::EPSILON)
 }

@@ -1,15 +1,16 @@
-use std::sync::Arc;
-use crate::{Matrix4x4, Point};
 use crate::Point2D;
 use crate::texture::Texture;
+use crate::{Matrix4x4, Point};
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Polygon {
     pub vertices: Vec<Point>,
-    pub(crate) tex_coords: Vec<(f32, f32)>, /// Texturkoordinaten für jeden Eckpunkt
+    pub(crate) tex_coords: Vec<(f32, f32)>,
+    /// Texturkoordinaten für jeden Eckpunkt
     pub texture: Option<Arc<Texture>>,
 
-    pub color: u32
+    pub color: u32,
 }
 
 impl Polygon {
@@ -18,13 +19,14 @@ impl Polygon {
             vertices: Vec::new(),
             tex_coords: Vec::new(),
             texture: None,
-            color: colorout
+            color: colorout,
         }
     }
 
     pub fn set_texture(&mut self, texture: Arc<Texture>) {
         self.texture = Some(texture);
-    }    pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
+    }
+    pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
         self.tex_coords = vect;
     }
 
@@ -36,12 +38,11 @@ impl Polygon {
         self.vertices.push(point);
     }
 
-
     pub fn transform_full(
         &mut self,
         translation: (f32, f32, f32), // Verschiebung in (x, y, z)
-        rotation: (f32, f32, f32),   // Rotation in (x, y, z) [in Radiant]
-        scale: (f32, f32, f32),      // Skalierung in (x, y, z)
+        rotation: (f32, f32, f32),    // Rotation in (x, y, z) [in Radiant]
+        scale: (f32, f32, f32),       // Skalierung in (x, y, z)
     ) {
         // Erzeuge die Transformationsmatrizen
         let translation_matrix = Matrix4x4::translate(translation.0, translation.1, translation.2);
@@ -95,7 +96,7 @@ impl Polygon {
 #[derive(Clone, Debug)]
 pub struct Polygon2D {
     pub vertices: Vec<Point2D>,
-    pub uv_coords: Vec<(f32, f32)>
+    pub uv_coords: Vec<(f32, f32)>,
 }
 
 pub fn project_polygon(
