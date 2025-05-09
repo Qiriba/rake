@@ -41,7 +41,7 @@ impl Texture {
         // Convert from u32 to u8 slice - this assumes texture.data is a Vec<u32>
         unsafe {
             std::slice::from_raw_parts(
-                self.data.as_ptr() as *const u8,
+                self.data.as_ptr(),
                 self.data.len() * 4
             )
         }
