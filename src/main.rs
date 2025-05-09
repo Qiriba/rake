@@ -488,16 +488,6 @@ fn render_scene_sdl2(
             continue;
         }
 
-        // Debug: Print projected coordinates
-        // println!("Polygon vertices: {:?}", projected.vertices);
-
-        // Extract color from the polygon
-        /*
-        let r = ((polygon.color >> 16) & 0xFF) as u8;
-        let g = ((polygon.color >> 8) & 0xFF) as u8;
-        let b = (polygon.color & 0xFF) as u8;
-        let a = ((polygon.color >> 24) & 0xFF) as u8;
-         */
         canvas.set_draw_color(Color::RGBA(255, 255, 255, 255));
 
         // Draw the polygon
@@ -520,8 +510,6 @@ fn render_scene_sdl2(
             canvas.set_draw_color(Color::RGBA(255, 255, 255, 255));
         }
     }
-
-    // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
 }
