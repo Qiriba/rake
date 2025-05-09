@@ -17,7 +17,7 @@ impl Matrix4x4 {
         }
     }
     pub fn rotation_around_axis(axis: Point, angle_radians: f32) -> Matrix4x4 {
-        let normalized_axis = axis.normalize(); // Achse normalisieren
+        let normalized_axis = axis.normalize();
         let x = normalized_axis.x;
         let y = normalized_axis.y;
         let z = normalized_axis.z;
@@ -82,7 +82,7 @@ impl Matrix4x4 {
     }
 
     pub fn multiply(&self, other: &Matrix4x4) -> Matrix4x4 {
-        let mut result = crate::Matrix4x4::identity();
+        let mut result = Matrix4x4::identity();
         for i in 0..4 {
             for j in 0..4 {
                 result.data[i][j] = (0..4).map(|k| self.data[i][k] * other.data[k][j]).sum();
@@ -91,7 +91,7 @@ impl Matrix4x4 {
         result
     }
     pub fn translate(tx: f32, ty: f32, tz: f32) -> Self {
-        let mut matrix = crate::Matrix4x4::identity();
+        let mut matrix = Matrix4x4::identity();
         matrix.data[0][3] = tx;
         matrix.data[1][3] = ty;
         matrix.data[2][3] = tz;
@@ -99,7 +99,7 @@ impl Matrix4x4 {
     }
 
     pub fn scale(sx: f32, sy: f32, sz: f32) -> Self {
-        let mut matrix = crate::Matrix4x4::identity();
+        let mut matrix = Matrix4x4::identity();
         matrix.data[0][0] = sx;
         matrix.data[1][1] = sy;
         matrix.data[2][2] = sz;
@@ -107,7 +107,7 @@ impl Matrix4x4 {
     }
 
     pub fn rotate_z(angle: f32) -> Self {
-        let mut matrix = crate::Matrix4x4::identity();
+        let mut matrix = Matrix4x4::identity();
         let cos_theta = angle.cos();
         let sin_theta = angle.sin();
         matrix.data[0][0] = cos_theta;
@@ -118,7 +118,7 @@ impl Matrix4x4 {
     }
 
     pub fn rotate_x(angle: f32) -> Self {
-        let mut matrix = crate::Matrix4x4::identity();
+        let mut matrix = Matrix4x4::identity();
         let cos_theta = angle.cos();
         let sin_theta = angle.sin();
         matrix.data[1][1] = cos_theta;
@@ -129,7 +129,7 @@ impl Matrix4x4 {
     }
 
     pub fn rotate_y(angle: f32) -> Self {
-        let mut matrix = crate::Matrix4x4::identity();
+        let mut matrix = Matrix4x4::identity();
         let cos_theta = angle.cos();
         let sin_theta = angle.sin();
         matrix.data[0][0] = cos_theta;

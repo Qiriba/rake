@@ -71,7 +71,7 @@ unsafe extern "system" fn window_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
-    return match msg {
+    match msg {
         WM_QUIT => {
             PostQuitMessage(0);
             0
@@ -81,7 +81,7 @@ unsafe extern "system" fn window_proc(
         WM_DESTROY => {
             // Beende die Anwendung
             PostQuitMessage(0);
-            return 0;
+            0
         }
 
         WM_KEYDOWN => {
@@ -109,7 +109,7 @@ unsafe extern "system" fn window_proc(
         }
 
         _ => DefWindowProcA(hwnd, msg, w_param, l_param),
-    };
+    }
 }
 
 unsafe fn handle_input() {
