@@ -90,7 +90,7 @@ pub fn project_polygon(
     let near_plane = 0.1;
     view_vertices = clip_polygon_to_near_plane(&view_vertices, near_plane);
 
-    // Prüfe, ob das Polygon noch existiert (kann nach Clipping ungültig werden)
+    // Prüfe ob das Polygon noch existiert
     if view_vertices.len() < 3 {
         return Polygon2D {
             vertices: vertices_2d,
@@ -100,14 +100,14 @@ pub fn project_polygon(
 
     // Projiziere alle übriggebliebenen Punkte
     for (vertex, uv) in view_vertices.iter().zip(&polygon.tex_coords) {
-        // 1. Projiziere den Punkt in den Clip-Space
+        // Projiziere den Punkt in den Clip-Space
         let projected = projection_matrix.multiply_point(vertex);
 
-        // 2. Perspektivische Division
+        // Perspektivische Division
         let x_ndc = projected.x / projected.z;
         let y_ndc = projected.y / projected.z;
 
-        // 3. Konvertiere in Bildschirmkoordinaten
+        // Konvertiere in Bildschirmkoordinaten
         let screen_x = ((screen_width as f32 / 2.0) * (1.0 + x_ndc)).round();
         let screen_y = ((screen_height as f32 / 2.0) * (1.0 - y_ndc)).round();
 
