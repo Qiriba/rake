@@ -324,8 +324,7 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
-fn normalize_model(polygons: &mut Vec<Polygon>, target_size: f32) {
-    // Find min/max bounds
+fn calculate_center_min_max(polygons: &Vec<Polygon>) -> (Point, Point, Point) {
     let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
     let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
 
@@ -342,11 +341,15 @@ fn normalize_model(polygons: &mut Vec<Polygon>, target_size: f32) {
     }
 
     // Calculate center and size
-    let center = Point::new(
+    (Point::new(
         (min.x + max.x) / 2.0,
         (min.y + max.y) / 2.0,
         (min.z + max.z) / 2.0,
-    );
+    ), min, max)
+}
+
+fn normalize_model(polygons: &mut Vec<Polygon>, target_size: f32) {
+    let (center, min, max) = calculate_center_min_max(polygons);
 
     let size = (max.x - min.x).max((max.y - min.y).max(max.z - min.z));
     let scale = if size > 0.0 { target_size / size } else { 1.0 };
@@ -672,30 +675,10 @@ fn focus_camera_on_model(camera: &mut Camera, polygons: &[Polygon]) {
 
 fn add_directional_gradient(
     camera: &Camera,
-    polygons: &[Polygon],
+    polygons: &Vec<Polygon>,
     framebuffer: &mut Framebuffer,
 ) {
-    // Calculate model center
-    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
-    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
-
-    for polygon in polygons.iter() {
-        for vertex in &polygon.vertices {
-            min.x = min.x.min(vertex.x);
-            min.y = min.y.min(vertex.y);
-            min.z = min.z.min(vertex.z);
-
-            max.x = max.x.max(vertex.x);
-            max.y = max.y.max(vertex.y);
-            max.z = max.z.max(vertex.z);
-        }
-    }
-
-    let center = Point::new(
-        (min.x + max.x) / 2.0,
-        (min.y + max.y) / 2.0,
-        (min.z + max.z) / 2.0,
-    );
+    let (center, _, _) = calculate_center_min_max(polygons);
 
     // Vector from camera to model center
     let to_center = center - camera.position;
