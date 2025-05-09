@@ -127,20 +127,56 @@ fn main() -> Result<(), String> {
 
     let mut framebuffer = Framebuffer::new(width as usize, height as usize);
 
-    let mut polygons = object::load_obj("./capsule.obj").unwrap_or_else(|e| {
+    let args: Vec<String> = std::env::args().collect();
+
+    let mut obj_path = "";
+    let mut texture_path = "";
+
+    if let Some(f_index) = args.iter().position(|a| a == "-f" || a == "--file") {
+        if f_index + 1 < args.len() {
+            obj_path = &args[f_index + 1];
+            println!("File path provided: {}", obj_path);
+        }else {
+            println!("No file selected")
+        }
+    }else{
+        println!("No .obj file provided\nPlease provide one with -f <path>");
+    }
+
+    if let Some(f_index) = args.iter().position(|a| a == "-t" || a == "--texture") {
+        if f_index + 1 < args.len() {
+            texture_path = &args[f_index + 1];
+            println!("Texture path provided: {}", texture_path);
+        }else {
+            println!("No texture selected")
+        }
+    }else{
+        println!("No texture provided");
+    }
+
+    let mut polygons = object::load_obj(obj_path).unwrap_or_else(|e| {
         println!("Error loading OBJ file: {}", e);
-        println!("Falling back to default cube");
+        // println!("Falling back to default cube");
         object::load_test_cube()
     });
 
-    let texture = Texture::from_file("./capsule0.jpg");
+    let texture_result = Texture::from_file(texture_path);
+    match texture_result {
+        Ok(texture) => {
+            println!("Texture loaded successfully");
 
-    // Sharing texture for ressource management
-    let shared_texture = Arc::new(texture);
+            // Sharing texture for ressource management
+            let shared_texture = Arc::new(texture);
 
-    // Assign texture to polygons
-    for polygon in &mut polygons {
-        polygon.texture = Some(shared_texture.clone())
+            // Assign texture to polygons
+            for polygon in &mut polygons {
+                polygon.texture = Some(shared_texture.clone())
+            }
+        }
+        Err(e) => {
+            println!("Error loading texture: {}", e);
+            println!("Falling back to default color");
+        }
     }
 
     normalize_model(&mut polygons, 2.0);
@@ -427,7 +463,7 @@ fn render_scene_sdl2(
 
         // Skip empty polygons
         if polygon2d.vertices.len() < 3 {
-            println!("Polygon was clipped to < 3 vertices");
+            //println!("Polygon was clipped to < 3 vertices");
             continue;
         } else if polygon2d.vertices.len() == 2 {
             // Set color for line
