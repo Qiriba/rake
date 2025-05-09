@@ -7,9 +7,7 @@ use std::sync::Arc;
 pub struct Polygon {
     pub vertices: Vec<Point>,
     pub(crate) tex_coords: Vec<(f32, f32)>,
-    /// Texturkoordinaten für jeden Eckpunkt
     pub texture: Option<Arc<Texture>>,
-
     pub color: u32,
 }
 
@@ -26,8 +24,8 @@ impl Polygon {
     pub fn set_texture(&mut self, texture: Arc<Texture>) {
         self.texture = Some(texture);
     }
-    pub fn set_tex_coords(&mut self, vect: Vec<(f32, f32)>) {
-        self.tex_coords = vect;
+    pub fn set_tex_coords(&mut self, tex_vec: Vec<(f32, f32)>) {
+        self.tex_coords = tex_vec;
     }
 
     pub fn set_color(&mut self, color: u32) {
@@ -58,38 +56,10 @@ impl Polygon {
             .multiply(&rotation_x_matrix)
             .multiply(&scaling_matrix);
 
-        // Wende die kombinierte Matrix auf jedes Vertex an
+        // Wende die kombinierte Matrix auf jedes der Vertexe an
         for vertex in &mut self.vertices {
             *vertex = combined_matrix.multiply_point(vertex);
         }
-    }
-    pub fn rotate_around_center(&mut self, rotation: (f32, f32, f32)) {
-        // 1. Berechne den Mittelpunkt des Polygons
-        let mut center_x = 0.0;
-        let mut center_y = 0.0;
-        let mut center_z = 0.0;
-        let vertex_count = self.vertices.len() as f32;
-
-        for vertex in &self.vertices {
-            center_x += vertex.x;
-            center_y += vertex.y;
-            center_z += vertex.z;
-        }
-
-        center_x /= vertex_count;
-        center_y /= vertex_count;
-        center_z /= vertex_count;
-
-        // 2. Verschiebe das Polygon relativ zum Ursprung
-        let translation_to_origin = (-center_x, -center_y, -center_z);
-        self.transform_full(translation_to_origin, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
-
-        // 3. Führe die Rotation um den Ursprung durch
-        self.transform_full((0.0, 0.0, 0.0), rotation, (1.0, 1.0, 1.0));
-
-        // 4. Verschiebe das Polygon zurück an seinen ursprünglichen Ort
-        let translation_back = (center_x, center_y, center_z);
-        self.transform_full(translation_back, (0.0, 0.0, 0.0), (1.0, 1.0, 1.0));
     }
 }
 
