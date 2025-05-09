@@ -108,7 +108,7 @@ unsafe extern "system" fn window_proc(
 }
 
 unsafe fn handle_input() {
-    let mut keys = KEYS.lock().unwrap();
+    let keys = KEYS.lock().unwrap();
     let mut camera = CAMERA.lock().unwrap();
 
     if !keys['L' as usize] {
@@ -305,7 +305,7 @@ fn main() {
 
         let mut framebuffer = Framebuffer::new(WINDOW_WIDTH,WINDOW_HEIGHT);
 
-
+/*
         let mut texture_input = String::new();
         let texture_path = loop {
             print!("Enter texture path: ");
@@ -338,12 +338,12 @@ fn main() {
         println!("OBJ file path: {}", obj_path);
 
         let texture = Texture::from_file(texture_path);
+        */
 
-        /*
         let texture = Texture::from_file(r#"capsule0.jpg"#);
 
         let obj_path = r#"capsule.obj"#;
-        */
+
         let (vertices, faces, tex) = object::parse_obj_file(obj_path).expect("Failed to load .obj file");
 
         let mut triangles = object::process_faces(&vertices, &faces, &tex);
