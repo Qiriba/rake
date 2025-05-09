@@ -235,7 +235,6 @@ fn main() -> Result<(), String> {
                             show_texture = !show_texture;
                             println!("Show texture: {}", show_texture);
                         }
-                        Keycode::Comma => focus_camera_on_model(&mut camera, &polygons),
                         Keycode::Space => keys['V' as usize] = true,
                         Keycode::B => {
                             skip_backfaces = !skip_backfaces;
@@ -390,7 +389,7 @@ fn fb_to_canvas(
         .update(
             None,
             &vec32_to_u8array(&framebuffer.pixels),
-            framebuffer.width as usize * 4,
+            framebuffer.width * 4,
         )
         .map_err(|e| e.to_string())?;
 
@@ -525,152 +524,6 @@ fn render_scene_sdl2(
     // println!("Frame rendered: {}/{} polygons visible", visible_polygons, total_polygons);
 
     Ok(())
-}
-
-/*
-fn visualize_bounding_box(polygons: &[Polygon]) -> Vec<Polygon> {
-    // Calculate model bounds
-    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
-    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
-
-    for polygon in polygons.iter() {
-        for vertex in &polygon.vertices {
-            min.x = min.x.min(vertex.x);
-            min.y = min.y.min(vertex.y);
-            min.z = min.z.min(vertex.z);
-
-            max.x = max.x.max(vertex.x);
-            max.y = max.y.max(vertex.y);
-            max.z = max.z.max(vertex.z);
-        }
-    }
-
-    // Calculate center
-    let center = Point::new(
-        (min.x + max.x) / 2.0,
-        (min.y + max.y) / 2.0,
-        (min.z + max.z) / 2.0,
-    );
-
-    let mut debug_polygons = Vec::new();
-
-    // Create a more visible marker at the center - a square/cube with 6 faces
-    let marker_size = 0.3; // Larger size to be more visible
-
-    // Add colored faces (for a cube at the center point)
-    // Front face (bright red)
-    let mut front = Polygon::new(0xFF0000FF);
-    front.add_point(Point::new(
-        center.x - marker_size,
-        center.y - marker_size,
-        center.z - marker_size,
-    ));
-    front.add_point(Point::new(
-        center.x + marker_size,
-        center.y - marker_size,
-        center.z - marker_size,
-    ));
-    front.add_point(Point::new(
-        center.x + marker_size,
-        center.y + marker_size,
-        center.z - marker_size,
-    ));
-    front.add_point(Point::new(
-        center.x - marker_size,
-        center.y + marker_size,
-        center.z - marker_size,
-    ));
-    debug_polygons.push(front);
-
-    // Add more faces of different colors
-    let mut back = Polygon::new(0x00FF00FF); // Green
-    back.add_point(Point::new(
-        center.x - marker_size,
-        center.y - marker_size,
-        center.z + marker_size,
-    ));
-    back.add_point(Point::new(
-        center.x - marker_size,
-        center.y + marker_size,
-        center.z + marker_size,
-    ));
-    back.add_point(Point::new(
-        center.x + marker_size,
-        center.y + marker_size,
-        center.z + marker_size,
-    ));
-    back.add_point(Point::new(
-        center.x + marker_size,
-        center.y - marker_size,
-        center.z + marker_size,
-    ));
-    debug_polygons.push(back);
-
-    println!("Created center marker at {:?}", center);
-    println!("Min: {:?}, Max: {:?}", min, max);
-    println!("Number of debug polygons: {}", debug_polygons.len());
-
-    debug_polygons
-}
- */
-
-fn focus_camera_on_model(camera: &mut Camera, polygons: &[Polygon]) {
-    // Calculate model bounds
-    let mut min = Point::new(f32::MAX, f32::MAX, f32::MAX);
-    let mut max = Point::new(f32::MIN, f32::MIN, f32::MIN);
-
-    for polygon in polygons.iter() {
-        for vertex in &polygon.vertices {
-            min.x = min.x.min(vertex.x);
-            min.y = min.y.min(vertex.y);
-            min.z = min.z.min(vertex.z);
-
-            max.x = max.x.max(vertex.x);
-            max.y = max.y.max(vertex.y);
-            max.z = max.z.max(vertex.z);
-        }
-    }
-
-    // Calculate the center of the model
-    let center = Point::new(
-        (min.x + max.x) / 2.0,
-        (min.y + max.y) / 2.0,
-        (min.z + max.z) / 2.0,
-    );
-
-    // Calculate vector from camera to model center
-    let direction = center - camera.position;
-
-    // Check if camera is already at center
-    let length_squared = direction.x * direction.x + direction.y * direction.y + direction.z * direction.z;
-    if length_squared < 0.0001 {
-        println!("Camera already at model center, not adjusting orientation");
-        return;
-    }
-
-    // Normalize direction safely
-    let length = length_squared.sqrt();
-    let normalized = Point::new(
-        direction.x / length,
-        direction.y / length,
-        direction.z / length,
-    );
-
-    // Safely calculate pitch (with clamping to avoid domain errors)
-    let y_clamped = normalized.y.max(-0.99999).min(0.99999);
-    camera.pitch = y_clamped.asin();
-
-    // Calculate yaw safely
-    camera.yaw = normalized.z.atan2(normalized.x);
-
-    // Update camera vectors
-    camera.update_forward();
-
-    println!("Camera focused on model");
-    println!("Model center: {:?}", center);
-    println!("Camera position: {:?}", camera.position);
-    println!("Direction vector: {:?}", normalized);
-    println!("Camera angles: pitch={:.2}, yaw={:.2}", camera.pitch, camera.yaw);
 }
 
 fn add_directional_gradient(
